@@ -1,0 +1,2 @@
+include websocketchat/version
+include README.rst
