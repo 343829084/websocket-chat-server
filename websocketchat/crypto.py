@@ -30,15 +30,23 @@ def decrypt(bytes, key, iv):
     return unpad_bytes(decrypted)
 
 
-def encrypt(bytes, key, iv):
+def encrypt(bytes, key=None, iv=None):
+    if key is None and iv is None:
+        key = Random.get_random_bytes(16)
+        iv = Random.get_random_bytes(16)
     aes = AES.new(key, AES.MODE_CFB, iv, segment_size=128)
-    return aes.encrypt(pad_bytes(bytes))
+    encrypted = aes.encrypt(pad_bytes(bytes))
+    if key is None and iv is None:
+        return key, iv, encrypted
+    else:
+        return encrypted
 
 
 def generate_key_and_iv(one=False):
     keyiv = Random.get_random_bytes(32)
+
     if one:
-        return keyiv
+        return keyiv.hex()
     else:
         return keyiv[:16], keyiv[16:]
 

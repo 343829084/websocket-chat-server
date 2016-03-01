@@ -7,6 +7,8 @@ import json
 import maxthreads
 from .frames import *
 from .crypto import *
+import logging
+
 
 class ChatDb:
     def __init__(self):
@@ -87,25 +89,37 @@ class Client:
         self.last_activity = time()
         self.time_connected = time()
         self.logged_in = False
+        self.key, self.iv = generate_key_and_iv()
 
-    def send_data(self, data, timeout=-1, binary=False):
-        """Sends a websocket text frame
-        :param data: A Data object
-        :return:
-        """
-        if binary:
-            target = self.websocket.send_binary
-        else:
-            target = self.websocket.send_text
-
+    def send(self, text, timeout=-1):
         self.send_limiter.start_thread(
-            target=target,
-            args=(data, timeout)
+            target=self.websocket.send_text,
+            args=(text, timeout)
         )
 
+    def send_message(self, message, timeout=-1):
+        text = json.JSONEncoder().encode(message.make_json())
+        self.send(text, timeout)
 
+    def send_mass_message(self, messages, timeout=-1):
+        packed_messages = list(range(len(messages)))
+        for i in range(len(messages)):
+            packed_messages[i] = messages[i].make_json()
 
-# class Commands:
+        text = json.JSONEncoder().encode({
+            'type': TYPE_MASS_MESSAGE,
+            'messages': packed_messages
+        })
+        self.send(text, timeout)
+
+    def send_key(self, timeout=-1):
+        text = json.JSONEncoder().encode({
+            'type': TYPE_KEY_IV,
+            'key': self.key.hex(),
+            'iv': self.iv.hex()
+        })
+        self.send(text, timeout)
+
 
 class Chat:
     def __init__(self,
@@ -121,6 +135,7 @@ class Chat:
         self.db = ChatDb()
         self.send_threads_limiter = maxthreads.MaxThreads(max_send_threads)
         self.send_timeout = send_timeout
+        self.clients = {}
 
     def start(self):
         self.open_room('Purgatory', 0)
@@ -131,9 +146,21 @@ class Chat:
         self.server.stop()
 
     def handle_incoming_frame(self, client, frame):
+        if frame.opcode == OpCode.TEXT:
+            frame.payload.decode('utf-8')
+            print('HERE: ', )
+            data = json.JSONDecoder().decode(frame.payload.decode('utf-8'))
+            if data['type'] == TYPE_LOGIN:
+                logging.debug('Client login attempt:' + frame.payload.decode('utf-8'))
+                client.send_text(data_frame(
+                    type=TYPE_LOGIN_RESPONCE,
+                    accepted=True
+                ))
+
         return True
 
     def handle_new_connection(self, client):
+
         return True
 
     def on_client_open(self, client):
@@ -144,13 +171,40 @@ class Chat:
             room_id=0
         )
         self.rooms[1].add_client(new_client)
+        self.clients[client.address] = new_client
+        new_client.send_key()
 
-        key, iv = generate_key_and_iv()
-
-        data = data_frame(type=TYPE_KEY_IV,
-                          keyiv='{}').encode().replace(b'{}', key+iv)
-        print('DATA: ', data, type(data))
-        new_client.send_data(data, self.send_timeout, binary=True)
+        # encrypted = encrypt(b'Hello from server', key, iv)
+        # data2 = data_frame(type=TYPE_SINGLE_MESSAGE,
+        #                    user='Zaebos',
+        #                    time=time(),
+        #                    text=encrypted.hex(),
+        #                    id=1,
+        #                    room_id=0,
+        #                    )
+        # print(data2)
+        #
+        # data3 = {'type': TYPE_MASS_MESSAGE,
+        #          'messages': [
+        #              {
+        #                  'type': TYPE_SINGLE_MESSAGE,
+        #                  'user': 'Zaebos',
+        #                  'time': time(),
+        #                  'text': encrypted.hex(),
+        #                  'id': 1,
+        #                  'room_id': 0
+        #              },
+        #              {
+        #                  'type': TYPE_SINGLE_MESSAGE,
+        #                  'user': 'Zaebos',
+        #                  'time': time(),
+        #                  'text': encrypted.hex(),
+        #                  'id': 1,
+        #                  'room_id': 0
+        #              }
+        #          ]}
+        # new_client.send_data(data2)
+        # new_client.send_data(data_frame(**data3))
 
     def add_room(self, name):
         room_id = self.db.insert('rooms', {'name': name, 'created': time()})
