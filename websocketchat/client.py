@@ -2,18 +2,19 @@
 from .crypto import *
 from time import time
 from .forms import *
-
+import logging
 
 class Client:
-    def __init__(self, name, websocket, send_limiter, room_id):
+    def __init__(self, name, websocket, send_limiter, room_name=None):
         self.name = name
         self.websocket = websocket
-        self.room_id = room_id
+        self.room_name = room_name
         self.send_limiter = send_limiter
         self.last_activity = time()
         self.time_connected = time()
         self.logged_in = False
-        self.key, self.iv = generate_key_and_iv()
+        self.key = None
+        self.iv = None
 
     def send(self, text, timeout=-1):
         if type(text) == str or type(text) == bytes:
@@ -40,19 +41,24 @@ class Client:
         }, timeout)
 
     def send_key(self, timeout=-1):
+        self.key, self.iv = generate_key_and_iv()
         self.send({
-            'type': server_forms['KEY_IV'],
+            'type': client_requests['KEY_IV'],
             'key': self.key.hex(),
             'iv': self.iv.hex()
         }, timeout)
 
     def login(self, accept=True, timeout=-1):
         self.send({
-            'type': server_forms['LOGIN'],
-            'accepted': accept
+            'type': client_requests['LOGIN'],
+            'accepted': accept,
+            'name': self.name
         }, timeout)
         if accept:
             self.logged_in = True
+            logging.debug('{}: login success'.format(self.websocket.address))
+        else:
+            logging.debug('{}: login failed'.format(self.websocket.address))
 
     def register_email(self, accept, timeout=-1):
         self.send({
@@ -77,3 +83,4 @@ class Client:
             'type': type,
             'accept': accept
         })
+

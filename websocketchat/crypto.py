@@ -27,7 +27,8 @@ def pad_bytes(bytes):
 def decrypt(bytes, key, iv):
     aes = AES.new(key, AES.MODE_CFB, iv, segment_size=128)
     decrypted = aes.decrypt(bytes)
-    return unpad_bytes(decrypted)
+    # return decrypted
+    return unpad_bytes(decrypted).decode('utf-8')
 
 
 def encrypt(bytes, key=None, iv=None):

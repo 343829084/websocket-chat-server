@@ -6,7 +6,7 @@ import sqlite3
 class ChatDb:
     def __init__(self):
         self.name = 'chat.db'
-        # self.db = sqlite3.connect('chat.db')
+        self.db = sqlite3.connect('chat.db', check_same_thread=False)
         # self.cursor = self.db.cursor()
         self.tables = {'users': {'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
                                  'name': 'TEXT',
@@ -18,7 +18,6 @@ class ChatDb:
                        'messages': {'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
                                     'user': 'TEXT',
                                     'text': 'TEXT',
-                                    'room_id': 'INTEGER',
                                     'room_name': 'TEXT',
                                     'show': 'INTEGER',
                                     'time': 'INTEGER'},
@@ -30,7 +29,11 @@ class ChatDb:
         self.create_tables()
 
     def connect(self):
-        return sqlite3.connect(self.name)
+        # return sqlite3.connect(self.name)
+        return self.db
+
+    def close(self):
+        self.db.close()
 
     def execute(self, command, entries=None, commit=False):
         db = sqlite3.connect(self.name)
@@ -44,7 +47,7 @@ class ChatDb:
         if commit:
             row_id = cursor.lastrowid
             db.commit()
-        db.close()
+        # db.close()
         return row_id
 
     def insert(self, table, entries):
@@ -59,7 +62,7 @@ class ChatDb:
         cursor.execute(command, entries)
         row_id = cursor.lastrowid
         db.commit()
-        db.close()
+        # db.close()
         return row_id
 
     def create_table(self, name, entries):
@@ -72,7 +75,7 @@ class ChatDb:
         columns = ', '.join(columns)
         cursor.execute('''CREATE TABLE IF NOT EXISTS {}({})'''.format(name, columns))
         db.commit()
-        db.close()
+        # # db.close()
 
     def create_tables(self):
 
@@ -86,12 +89,15 @@ class ChatDb:
             entry = '"' + entry + '"'
         else:
             entry = str(entry)
-
-        cursor.execute('''SELECT EXISTS(SELECT 1 FROM {} WHERE {}={})'''.format(table,
-                                                                                column,
-                                                                                entry))
-        db.close()
-        if cursor.fetchone():
+        cursor.execute('''SELECT id FROM {} WHERE {}={}'''.format(table, column, entry))
+        # print('''SELECT EXISTS(SELECT 1 FROM {} WHERE {}={})'''.format(table,
+        #                                                                         column,
+        #                                                                         entry))
+        # # cursor.execute('''SELECT EXISTS(SELECT 1 FROM {} WHERE {}={})'''.format(table,
+        #                                                                         column,
+        #                                                                         entry))
+        # db.close()
+        if cursor.fetchone() is not None:
             return True
         else:
             return False
@@ -105,7 +111,7 @@ class ChatDb:
             data = cursor.fetchall()
         else:
             data = cursor.fetchone()
-        db.close()
+        # db.close()
         return data
 
 

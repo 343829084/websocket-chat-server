@@ -10,22 +10,15 @@ client_requests = {
     'LEAVE_ROOM': 101,
     'ENTER_ROOM': 102,
     'LOGIN': 104,
-    'REGISTER_EMAIL': 105,
-    'REGISTER_USERNAME': 106,
-    'REGISTER_PASSWORD': 107,
+    'CHECK_EMAIL': 105,
+    'CHECK_USERNAME': 106,
+    'REGISTER': 107,
     'KEY_IV': 109
 }
 
-
-
+# forms that the server can spontaneously send out w/o a client request
 server_forms = {
     'SINGLE_MESSAGE': 200,
-    'MASS_MESSAGE': 201,
-    'KEY_IV': 202,
-    'LOGIN': 203,
-    'REGISTER_EMAIL': 204,
-    'REGISTER_USERNAME': 205,
-    'REGISTER_PASSWORD': 206,
 }
 
 
@@ -78,20 +71,20 @@ class Message:
 #            TYPE_KEY_IV: CONTENT_KEY_IV,
 #            TYPE_LOGIN: CONTENT_LOGIN,
 #            TYPE_LOGIN_RESPONCE: CONTENT_LOGIN_RESPONCE}
-
-
-def data_frame(**kwargs):
-    type = kwargs['type']
-    content = CONTENT[type]
-    if len(kwargs) != len(content):
-        raise ValueError('Some content missing or not supposed to be there')
-    for kwarg in kwargs:
-        if kwarg not in content:
-            raise ValueError('unexpected content {}'.format(kwarg))
-
-    # return Frame(
-    #     payload=json.JSONEncoder().encode(kwargs).encode(),
-    #     mask=0,
-    #     opcode=OpCode.TEXT
-    # )
-    return json.JSONEncoder().encode(kwargs)
+#
+#
+# def data_frame(**kwargs):
+#     type = kwargs['type']
+#     content = CONTENT[type]
+#     if len(kwargs) != len(content):
+#         raise ValueError('Some content missing or not supposed to be there')
+#     for kwarg in kwargs:
+#         if kwarg not in content:
+#             raise ValueError('unexpected content {}'.format(kwarg))
+#
+#     # return Frame(
+#     #     payload=json.JSONEncoder().encode(kwargs).encode(),
+#     #     mask=0,
+#     #     opcode=OpCode.TEXT
+#     # )
+#     return json.JSONEncoder().encode(kwargs)
