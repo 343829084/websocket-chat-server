@@ -40,6 +40,10 @@ class Chat:
     def handle_request(self, client, msg):
         logging.debug('New request of type {} ({})'.format(msg['type'],
                                                            list(client_requests.keys())[list(client_requests.values()).index(msg['type'])]))
+        if 'type' not in msg:
+            logging.debug("{}: Received a request that doesn't contain a type".format(client.websocket.address))
+            return False
+
         if msg['type'] == client_requests['SINGLE_MESSAGE']:
             if client.logged_in:
                 t = time()
@@ -59,6 +63,7 @@ class Chat:
                     'type': client_requests['SINGLE_MESSAGE'],
                     'accepted': return_value
             })
+            return return_value
 
         elif msg['type'] == client_requests['CHECK_USERNAME']:
             client.send({
@@ -104,8 +109,6 @@ class Chat:
                 'accepted': accepted,
                 'name': name
             })
-
-
             return True
         elif msg['type'] == client_requests['LOGIN']:
 
@@ -147,6 +150,9 @@ class Chat:
                 'type': client_requests['ENTER_ROOM'],
                 'messages': messages
             })
+            return True
+        else:
+            return False
 
     def load_room(self, name):
         data = self.db.fetch('''SELECT id, name FROM rooms where name="{}"'''.format(name))
@@ -193,99 +199,3 @@ class Chat:
             logging.debug('Removing room "{}" from memory because no users are left in it'.format(client_obj.name))
         del self.clients[client.address]
         logging.debug('{}: Disconnected'.format(name))
-
-    # def handle_incoming_frame(self, client, frame):
-    #     if frame.opcode == OpCode.TEXT:
-    #         client_obj = self.clients[client.address]
-    #         data = json.JSONDecoder().decode(frame.payload.decode('utf-8'))
-    #         if data['type'] == client_forms['SINGLE_MESSAGE']:
-    #             if client_obj.logged_in:
-    #                 msg_time = time()
-    #                 msg_id = self.db.insert('messages',{
-    #                     'user': client_obj.name,
-    #                     'text': data['text'],
-    #                     'room_id': client_obj.room_id,
-    #                     'show': 1,
-    #                     'time': msg_time
-    #                 })
-    #                 self.rooms[client_obj.room_id].broadcast({
-    #                         'type': server_forms['SINGLE_MESSAGE'],
-    #                         'user': client_obj.name,
-    #                         'time': msg_time,
-    #                         'text': data['text'],
-    #                         'id': msg_id
-    #                 })
-    #         elif data['type'] == client_forms['LOGIN']:
-    #             client_obj.login()
-    #         elif data['type'] == client_forms['ENTER_ROOM']:
-    #             room_name = data.room_id
-    #             if room_name in self.rooms:
-    #                 self.rooms[client_obj.room_name].remove_client(client_obj)
-    #                 self.rooms[room_name].add_client(client_obj)
-    #                 client_obj.room_name = room_name
-    #
-    #                 messages = self.db.fetch('''SELECT id, text, user from messages WHERE room''')
-    #     return True
-    #
-    # def handle_new_connection(self, client):
-    #
-    #     return True
-    #
-    # def on_client_open(self, client):
-    #     new_client = Client(
-    #         name='temporaty_name',
-    #         websocket=client,
-    #         send_limiter=self.send_threads_limiter,
-    #         room_id=0
-    #     )
-    #     self.rooms[0].add_client(new_client)
-    #     self.clients[client.address] = new_client
-    #     new_client.send_key()
-    #
-    #     self.db.fetch('''SELECT id, text, user, time FROM messages where room_id''')
-    #     # encrypted = encrypt(b'Hello from server', key, iv)
-    #     # data2 = data_frame(type=TYPE_SINGLE_MESSAGE,
-    #     #                    user='Zaebos',
-    #     #                    time=time(),
-    #     #                    text=encrypted.hex(),
-    #     #                    id=1,
-    #     #                    room_id=0,
-    #     #                    )
-    #     # print(data2)
-    #     #
-    #     # data3 = {'type': TYPE_MASS_MESSAGE,
-    #     #          'messages': [
-    #     #              {
-    #     #                  'type': TYPE_SINGLE_MESSAGE,
-    #     #                  'user': 'Zaebos',
-    #     #                  'time': time(),
-    #     #                  'text': encrypted.hex(),
-    #     #                  'id': 1,
-    #     #                  'room_id': 0
-    #     #              },
-    #     #              {
-    #     #                  'type': TYPE_SINGLE_MESSAGE,
-    #     #                  'user': 'Zaebos',
-    #     #                  'time': time(),
-    #     #                  'text': encrypted.hex(),
-    #     #                  'id': 1,
-    #     #                  'room_id': 0
-    #     #              }
-    #     #          ]}
-    #     # new_client.send_data(data2)
-    #     # new_client.send_data(data_frame(**data3))
-    #
-    # def add_room(self, name):
-    #     room_id = self.db.insert('rooms', {'name': name, 'created': time()})
-    #     self.open_room(name, room_id)
-    #
-    # def open_room(self, name, room_id):
-    #     self.rooms[room_id] = ChatRoom(name, room_id)
-    #
-    # def load_rooms(self):
-    #     db = self.db.connect()
-    #     cursor = db.cursor()
-    #     cursor.execute('''SELECT id, name FROM rooms''')
-    #     all_rooms = cursor.fetchall()
-    #     for room in all_rooms:
-    #         self.open_room(room_id=room[0], name=room[1])
