@@ -108,7 +108,7 @@ class Chat:
                 accepted = True
                 client.name = name
                 client.verification_code = random_str(5)
-                send_email(email, 'Chat verification code', client.verification_code)
+                # send_email(email, 'Chat verification code', client.verification_code)
 
             else:
                 logging.debug('{}: registration denied'.format(client.websocket.address))

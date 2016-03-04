@@ -3,7 +3,7 @@ from .crypto import *
 from time import time
 from .forms import *
 import logging
-from .chat_server import str2hex
+# from .chat_server import str2hex
 
 class Client:
     def __init__(self, name, websocket, send_limiter, room_name=None):
@@ -86,103 +86,103 @@ class Client:
             'accept': accept
         })
 
-    def handle_request(self, msg):
-        if msg['type'] == client_requests['SINGLE_MESSAGE']:
-            if self.logged_in:
-                return_value = True
-            else:
-                return_value = False
-            self.send({
-                    'type': client_requests['SINGLE_MESSAGE'],
-                    'accepted': return_value
-            })
-            return return_value
-
-        elif msg['type'] == client_requests['CHECK_USERNAME']:
-            self.send({
-                    'type': client_requests['CHECK_USERNAME'],
-                    'available': self.db.check_existence('users', 'name', msg['name'])
-            })
-            return True
-        elif msg['type'] == client_requests['CHECK_EMAIL']:
-            self.send({
-                    'type': client_requests['CHECK_EMAIL'],
-                    'available': self.db.check_existence('users', 'email', msg['email'])
-            })
-            return True
-        elif msg['type'] == client_requests['KEY_IV']:
-            self.send_key()
-            return True
-        elif msg['type'] == client_requests['REGISTER']:
-            email = decrypt(str2hex(msg['email']), self.key, self.iv)
-            name = decrypt(str2hex(msg['name']), self.key, self.iv)
-            password = decrypt(str2hex(msg['password']), self.key, self.iv)
-
-            email_available = not self.db.check_existence('users', 'email', email)
-            name_available = not self.db.check_existence('users', 'name', name)
-
-            if email_available and name_available:
-                self.db.insert('users', {
-                    'name': name,
-                    'email': email,
-                    'password': password,
-                    'joined': time(),
-                    'last_online': time()
-                })
-                logging.debug('{}: Registered'.format(self.websocket.address))
-                accepted = True
-                self.logged_in = True
-                self.name = name
-            else:
-                logging.debug('{}: registration denied'.format(self.websocket.address))
-                accepted = False
-
-            self.send({
-                'type': client_requests['REGISTER'],
-                'accepted': accepted,
-                'name': name
-            })
-            return True
-        elif msg['type'] == client_requests['LOGIN']:
-
-            email = decrypt(str2hex(msg['email']), self.key, self.iv)
-            password = decrypt(str2hex(msg['password']), self.key, self.iv)
-            data = self.db.fetch('''SELECT name, password FROM users WHERE email="{}"'''.format(email))
-            if data and data[1] == password:
-                self.name = data[0]
-                self.login(accept=True)
-            else:
-                self.login(accept=False)
-
-            return True
-        elif msg['type'] == client_requests['ENTER_ROOM']:
-            room_name = msg['name']
-            if room_name not in self.rooms:
-                self.load_room(room_name)
-
-            if self.room_name is not None:
-                self.rooms[room_name].remove_client(client)
-            self.room_name = room_name
-            self.rooms[room_name].add_client(client)
-
-            data = self.db.fetch('''SELECT id, user, text, time FROM messages WHERE room_name="{}"'''.format(room_name), all=True)
-            if data is not None:
-                length = len(data)
-            else:
-                length = 0
-            messages = list(range(length))
-
-            for i in range(length):
-                messages[i] = {
-                    'id': data[i][0],
-                    'user': data[i][1],
-                    'text': data[i][2],
-                    'time': data[i][3]
-                }
-            self.send({
-                'type': client_requests['ENTER_ROOM'],
-                'messages': messages
-            })
-            return True
-        else:
-            return False
+    # def handle_request(self, msg):
+    #     if msg['type'] == client_requests['SINGLE_MESSAGE']:
+    #         if self.logged_in:
+    #             return_value = True
+    #         else:
+    #             return_value = False
+    #         self.send({
+    #                 'type': client_requests['SINGLE_MESSAGE'],
+    #                 'accepted': return_value
+    #         })
+    #         return return_value
+    #
+    #     elif msg['type'] == client_requests['CHECK_USERNAME']:
+    #         self.send({
+    #                 'type': client_requests['CHECK_USERNAME'],
+    #                 'available': self.db.check_existence('users', 'name', msg['name'])
+    #         })
+    #         return True
+    #     elif msg['type'] == client_requests['CHECK_EMAIL']:
+    #         self.send({
+    #                 'type': client_requests['CHECK_EMAIL'],
+    #                 'available': self.db.check_existence('users', 'email', msg['email'])
+    #         })
+    #         return True
+    #     elif msg['type'] == client_requests['KEY_IV']:
+    #         self.send_key()
+    #         return True
+    #     elif msg['type'] == client_requests['REGISTER']:
+    #         email = decrypt(str2hex(msg['email']), self.key, self.iv)
+    #         name = decrypt(str2hex(msg['name']), self.key, self.iv)
+    #         password = decrypt(str2hex(msg['password']), self.key, self.iv)
+    #
+    #         email_available = not self.db.check_existence('users', 'email', email)
+    #         name_available = not self.db.check_existence('users', 'name', name)
+    #
+    #         if email_available and name_available:
+    #             self.db.insert('users', {
+    #                 'name': name,
+    #                 'email': email,
+    #                 'password': password,
+    #                 'joined': time(),
+    #                 'last_online': time()
+    #             })
+    #             logging.debug('{}: Registered'.format(self.websocket.address))
+    #             accepted = True
+    #             self.logged_in = True
+    #             self.name = name
+    #         else:
+    #             logging.debug('{}: registration denied'.format(self.websocket.address))
+    #             accepted = False
+    #
+    #         self.send({
+    #             'type': client_requests['REGISTER'],
+    #             'accepted': accepted,
+    #             'name': name
+    #         })
+    #         return True
+    #     elif msg['type'] == client_requests['LOGIN']:
+    #
+    #         email = decrypt(str2hex(msg['email']), self.key, self.iv)
+    #         password = decrypt(str2hex(msg['password']), self.key, self.iv)
+    #         data = self.db.fetch('''SELECT name, password FROM users WHERE email="{}"'''.format(email))
+    #         if data and data[1] == password:
+    #             self.name = data[0]
+    #             self.login(accept=True)
+    #         else:
+    #             self.login(accept=False)
+    #
+    #         return True
+    #     elif msg['type'] == client_requests['ENTER_ROOM']:
+    #         room_name = msg['name']
+    #         if room_name not in self.rooms:
+    #             self.load_room(room_name)
+    #
+    #         if self.room_name is not None:
+    #             self.rooms[room_name].remove_client(client)
+    #         self.room_name = room_name
+    #         self.rooms[room_name].add_client(client)
+    #
+    #         data = self.db.fetch('''SELECT id, user, text, time FROM messages WHERE room_name="{}"'''.format(room_name), all=True)
+    #         if data is not None:
+    #             length = len(data)
+    #         else:
+    #             length = 0
+    #         messages = list(range(length))
+    #
+    #         for i in range(length):
+    #             messages[i] = {
+    #                 'id': data[i][0],
+    #                 'user': data[i][1],
+    #                 'text': data[i][2],
+    #                 'time': data[i][3]
+    #             }
+    #         self.send({
+    #             'type': client_requests['ENTER_ROOM'],
+    #             'messages': messages
+    #         })
+    #         return True
+    #     else:
+    #         return False
