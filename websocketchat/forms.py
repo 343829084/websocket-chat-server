@@ -13,7 +13,8 @@ client_requests = {
     'CHECK_EMAIL': 105,
     'CHECK_USERNAME': 106,
     'REGISTER': 107,
-    'KEY_IV': 109
+    'KEY_IV': 109,
+    'VERIFICATION': 110
 }
 
 # forms that the server can spontaneously send out w/o a client request

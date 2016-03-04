@@ -10,9 +10,17 @@ from .chat_room import *
 from .database import *
 from .client import Client
 from .crypto import *
+import random, string
+from .email_functions import *
+
 
 def str2hex(string):
     return ewebsockets.int2bytes(int(string, 16), int(len(string)/2))
+
+
+def random_str(n):
+    return ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(n))
+
 
 class Chat:
     def __init__(self,
@@ -98,8 +106,10 @@ class Chat:
                 })
                 logging.debug('{}: Registered'.format(client.websocket.address))
                 accepted = True
-                client.logged_in = True
                 client.name = name
+                client.verification_code = random_str(5)
+                send_email(email, 'Chat verification code', client.verification_code)
+
             else:
                 logging.debug('{}: registration denied'.format(client.websocket.address))
                 accepted = False
@@ -110,6 +120,20 @@ class Chat:
                 'name': name
             })
             return True
+        elif msg['type'] == client_requests['VERIFICATION']:
+            if msg['code'] == client.verification_code:
+                accepted = True
+            else:
+                accepted = False
+
+            client.send({
+                'type': client_requests['VERIFICATION'],
+                'accepted': accepted,
+                'name': client.name
+            })
+
+
+            client.logged_in = True
         elif msg['type'] == client_requests['LOGIN']:
 
             email = decrypt(str2hex(msg['email']), client.key, client.iv)
