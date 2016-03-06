@@ -17,6 +17,7 @@ class Client:
         self.key = None
         self.iv = None
         self.verification_code = None
+        self.register_items = None
 
     def send(self, text, timeout=-1):
         if type(text) == str or type(text) == bytes:

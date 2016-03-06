@@ -90,50 +90,59 @@ class Chat:
             return True
         elif msg['type'] == client_requests['REGISTER']:
             email = decrypt(str2hex(msg['email']), client.key, client.iv)
-            name = decrypt(str2hex(msg['name']), client.key, client.iv)
+            name = decrypt(str2hex(msg['name']), client.key, client.iv).capitalize()
             password = decrypt(str2hex(msg['password']), client.key, client.iv)
 
             email_available = not self.db.check_existence('users', 'email', email)
             name_available = not self.db.check_existence('users', 'name', name)
 
             if email_available and name_available:
+                logging.debug('{}: Register requested'.format(client.websocket.address))
+                client.name = name
+                client.verification_code = random_str(5)
+                client.register_items = [email, name, password]
+                send_email(email, 'Chat verification code', client.verification_code)
+                client.send({
+                    'type': client_requests['REGISTER'],
+                    'accepted': True
+                })
+                # client.logged_in = True
+            else:
+                ad = ''
+                if not email_available:
+                    ad += 'email exists '
+                if not name_available:
+                    ad += 'name exists'
+
+                logging.debug('{}: registration denied ({})'.format(client.websocket.address, ad))
+                client.send({
+                    'type': client_requests['REGISTER'],
+                    'accepted': False,
+                    'email': email_available,
+                    'name': name_available
+                })
+
+            return True
+        elif msg['type'] == client_requests['VERIFY']:
+            if msg['code'] == client.verification_code:
+                accepted = True
                 self.db.insert('users', {
-                    'name': name,
-                    'email': email,
-                    'password': password,
+                    'email': client.register_items[0],
+                    'name': client.register_items[1],
+                    'password': client.register_items[2],
                     'joined': time(),
                     'last_online': time()
                 })
-                logging.debug('{}: Registered'.format(client.websocket.address))
-                accepted = True
-                client.name = name
-                client.verification_code = random_str(5)
-                # send_email(email, 'Chat verification code', client.verification_code)
-
-            else:
-                logging.debug('{}: registration denied'.format(client.websocket.address))
-                accepted = False
-
-            client.send({
-                'type': client_requests['REGISTER'],
-                'accepted': accepted,
-                'name': name
-            })
-            return True
-        elif msg['type'] == client_requests['VERIFICATION']:
-            if msg['code'] == client.verification_code:
-                accepted = True
+                client.logged_in = True
             else:
                 accepted = False
 
             client.send({
-                'type': client_requests['VERIFICATION'],
+                'type': client_requests['VERIFY'],
                 'accepted': accepted,
                 'name': client.name
             })
 
-
-            client.logged_in = True
         elif msg['type'] == client_requests['LOGIN']:
 
             email = decrypt(str2hex(msg['email']), client.key, client.iv)
@@ -146,17 +155,28 @@ class Chat:
                 client.login(accept=False)
 
             return True
+        elif msg['type'] == client_requests['LOGOUT']:
+            client.name = 'temporary_name'
+            client.logged_in = False
+            client.send({
+                'type': client_requests['LOGOUT']
+            })
+
         elif msg['type'] == client_requests['ENTER_ROOM']:
             room_name = msg['name']
             if room_name not in self.rooms:
                 self.load_room(room_name)
 
             if client.room_name is not None:
-                self.rooms[room_name].remove_client(client)
+                self.rooms[client.room_name].remove_client(client)
+
             client.room_name = room_name
             self.rooms[room_name].add_client(client)
 
-            data = self.db.fetch('''SELECT id, user, text, time FROM messages WHERE room_name="{}"'''.format(room_name), all=True)
+            data = self.db.fetch(
+                '''SELECT id, user, text, time FROM messages WHERE room_name = "{}" AND id > {}'''.format(
+                    room_name, msg['last_message']), all=True)
+
             if data is not None:
                 length = len(data)
             else:
@@ -168,10 +188,11 @@ class Chat:
                     'id': data[i][0],
                     'user': data[i][1],
                     'text': data[i][2],
-                    'time': data[i][3]
+                    'time': data[i][3],
                 }
             client.send({
                 'type': client_requests['ENTER_ROOM'],
+                'room': room_name,
                 'messages': messages
             })
             return True

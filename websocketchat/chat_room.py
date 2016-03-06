@@ -1,6 +1,7 @@
 #!/bin/env python3
 
 from .forms import *
+import logging
 
 class ChatRoom:
     def __init__(self, name, room_id):
@@ -12,7 +13,11 @@ class ChatRoom:
         self.clients.append(client)
 
     def remove_client(self, client):
-        self.clients.remove(client)
+        try:
+            self.clients.remove(client)
+            logging.debug('Removed {} from {}'.format(client.name, self.name))
+        except ValueError:
+            logging.debug('Failed to remove {} from {}'.format(client.name, self.name))
 
     def broadcast(self, data, timeout=-1):
         for client in self.clients:
