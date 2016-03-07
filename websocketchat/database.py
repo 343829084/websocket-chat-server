@@ -1,7 +1,7 @@
 #!/bin/env python3
 
 import sqlite3
-
+import json
 
 class ChatDb:
     def __init__(self):
@@ -13,7 +13,8 @@ class ChatDb:
                                  'email': 'TEXT',
                                  'password': 'TEXT',
                                  'joined': 'INTEGER',
-                                 'last_online': 'INTEGER'},
+                                 'last_online': 'INTEGER',
+                                 'tokens': 'TEXT'},
 
                        'messages': {'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
                                     'user': 'TEXT',

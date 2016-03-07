@@ -15,7 +15,8 @@ client_requests = {
     'REGISTER': 107,
     'KEY_IV': 109,
     'VERIFY': 110,
-    'LOGOUT': 111
+    'LOGOUT': 111,
+    'AUTO_LOGIN': 112
 }
 
 # forms that the server can spontaneously send out w/o a client request

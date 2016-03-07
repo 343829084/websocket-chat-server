@@ -8,6 +8,7 @@ import logging
 class Client:
     def __init__(self, name, websocket, send_limiter, room_name=None):
         self.name = name
+        self.id = None
         self.websocket = websocket
         self.room_name = room_name
         self.send_limiter = send_limiter

@@ -31,7 +31,11 @@ class Chat:
             handle_new_connection=self.handle_new_connection,
             handle_websocket_frame=self.handle_incoming_frame,
             on_client_open=self.on_client_open,
-            on_client_close=self.on_client_close
+            on_client_close=self.on_client_close,
+            esockets_kwargs= {
+                'port': 25565,
+                # 'host': '192.168.1.3'
+            }
         )
         self.rooms = {}
         self.db = ChatDb()
@@ -126,13 +130,15 @@ class Chat:
         elif msg['type'] == client_requests['VERIFY']:
             if msg['code'] == client.verification_code:
                 accepted = True
-                self.db.insert('users', {
+                id = self.db.insert('users', {
                     'email': client.register_items[0],
                     'name': client.register_items[1],
                     'password': client.register_items[2],
                     'joined': time(),
-                    'last_online': time()
+                    'last_online': time(),
+                    'tokens': '[]'
                 })
+                client.id = id
                 client.logged_in = True
             else:
                 accepted = False
@@ -144,23 +150,63 @@ class Chat:
             })
 
         elif msg['type'] == client_requests['LOGIN']:
-
+            response = {'type': client_requests['LOGIN']}
             email = decrypt(str2hex(msg['email']), client.key, client.iv)
             password = decrypt(str2hex(msg['password']), client.key, client.iv)
-            data = self.db.fetch('''SELECT name, password FROM users WHERE email="{}"'''.format(email))
-            if data and data[1] == password:
-                client.name = data[0]
-                client.login(accept=True)
+
+            data = self.db.fetch('''SELECT id, name, password, tokens FROM users WHERE email="{}"'''.format(email))
+            if data and data[2] == password:
+                response['accepted'] = True
+                client.name = data[1]
+                client.id = data[0]
+                if msg['request_token'] == True:
+                    new_token = random_str(64)
+                    response['token'] = encrypt(new_token.encode(), client.key, client.iv).hex()
+                    tokens = json.JSONDecoder().decode(data[3])
+                    tokens.append(new_token)
+                    if len(tokens) > 10:
+                        tokens.pop(0)
+                    print('TOKENS', tokens)
+                    print('JSON', json.JSONEncoder().encode(tokens))
+                    self.db.execute("UPDATE users SET tokens=? WHERE Id=?",
+                                    (json.JSONEncoder().encode(tokens),
+                                     client.id))
             else:
-                client.login(accept=False)
+                response['accepted'] = False
+
+            client.send(response)
 
             return True
+        elif msg['type'] == client_requests['AUTO_LOGIN']:
+            response = {'type': client_requests['AUTO_LOGIN']}
+            email = decrypt(str2hex(msg['email']), client.key, client.iv)
+            token = msg['token']
+            data = self.db.fetch('''SELECT id, name, tokens FROM users WHERE email="{}"'''.format(email))
+            tokens = json.JSONDecoder().decode(data[2])
+            if token in tokens:
+                response['accepted'] = True
+                client.name = data[1]
+                client.id = data[0]
+                client.logged_in = True
+                new_token = random_str(64)
+                tokens[tokens.index(token)] = new_token
+                response['token'] = encrypt(new_token.encode(), client.key, client.iv).hex()
+                self.db.execute('''UPDATE users SET tokens = ? WHERE id = ?;''',
+                                (json.JSONEncoder().encode(tokens),
+                                 client.id))
+            else:
+                response['accepted'] = False
+
+            client.send(response)
+            return True
+
         elif msg['type'] == client_requests['LOGOUT']:
             client.name = 'temporary_name'
             client.logged_in = False
             client.send({
                 'type': client_requests['LOGOUT']
             })
+            return True
 
         elif msg['type'] == client_requests['ENTER_ROOM']:
             room_name = msg['name']
@@ -195,6 +241,7 @@ class Chat:
                 'room': room_name,
                 'messages': messages
             })
+            logging.debug('{} entered room {}'.format(client.name, room_name))
             return True
         else:
             return False
@@ -235,7 +282,6 @@ class Chat:
         self.clients[client.address] = new_client
 
     def on_client_close(self, client):
-
         client_obj = self.clients[client.address]
         name = client_obj.name
         self.rooms[client_obj.room_name].remove_client(client_obj)
