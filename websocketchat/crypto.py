@@ -1,6 +1,6 @@
 from Crypto.Cipher import AES
 from Crypto import Random
-
+from hashlib import sha256
 """Encrypts/decrypts data for the CryptoJS JavaScript module
 use mode: CryptoJS.mode.CFB
     padding: CryptoJS.pad.Pkcs7
@@ -28,7 +28,7 @@ def decrypt(bytes, key, iv):
     aes = AES.new(key, AES.MODE_CFB, iv, segment_size=128)
     decrypted = aes.decrypt(bytes)
     # return decrypted
-    return unpad_bytes(decrypted).decode('utf-8')
+    return unpad_bytes(decrypted)
 
 
 def encrypt(bytes, key=None, iv=None):
@@ -51,6 +51,8 @@ def generate_key_and_iv(one=False):
     else:
         return keyiv[:16], keyiv[16:]
 
+def hash(string):
+    return sha256(string.encode()).hexdigest()
 
 if __name__ == '__main__':
     key, iv = generate_key_and_iv()

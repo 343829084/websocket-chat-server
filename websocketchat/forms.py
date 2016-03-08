@@ -4,6 +4,19 @@
 import json
 from time import time as current_time
 
+request_ids = {
+    'send_message': '1',
+    'get_messages': '2',
+    'login': '3',
+    'get_key_iv': '4',
+    'get_token': '5',
+    'enter_room': '6',
+    'check_username': '7',
+    'check_email': '8',
+    'register': '9',
+    'validate': 'a',
+    'single_message': 'b'
+}
 
 client_requests = {
     'SINGLE_MESSAGE': 100,

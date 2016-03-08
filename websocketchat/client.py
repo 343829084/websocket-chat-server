@@ -4,6 +4,7 @@ from time import time
 from .forms import *
 import logging
 # from .chat_server import str2hex
+import json
 
 class Client:
     def __init__(self, name, websocket, send_limiter, room_name=None):
@@ -20,67 +21,84 @@ class Client:
         self.verification_code = None
         self.register_items = None
 
-    def send(self, text, timeout=-1):
-        if type(text) == str or type(text) == bytes:
-            self.send_limiter.start_thread(
-                target=self.websocket.send_text,
-                args=(text, timeout)
-            )
-        elif type(text) == dict:
-            self.send_limiter.start_thread(
-                target=self.websocket.send_json,
-                args=(text, timeout)
-            )
+    def address(self):
+        return '{}({}:{})'.format(self.name, self.websocket.address[0], self.websocket.address[1])
 
-    def send_message(self, message, timeout=-1):
-        self.send(message.make_json(), timeout)
-
-    def send_mass_message(self, messages, timeout=-1):
-        packed_messages = list(range(len(messages)))
-        for i in range(len(messages)):
-            packed_messages[i] = messages[i].make_json()
-        self.send({
-            'type': server_forms['MASS_MESSAGE'],
-            'messages': packed_messages
-        }, timeout)
-
-    def send_key(self, timeout=-1):
-        self.key, self.iv = generate_key_and_iv()
-        self.send({
-            'type': client_requests['KEY_IV'],
-            'key': self.key.hex(),
-            'iv': self.iv.hex()
-        }, timeout)
-
-    def login(self, accept=True, timeout=-1):
-        self.send({
-            'type': client_requests['LOGIN'],
-            'accepted': accept,
-            'name': self.name
-        }, timeout)
-        if accept:
-            self.logged_in = True
-            logging.debug('{}: login success'.format(self.websocket.address))
+    def send(self, request_type, text, timeout=-1, enc=False):
+        if type(text) == str:
+            _text = text
+        elif type(text) == dict or type(text) == list:
+            _text = json.JSONEncoder().encode(text)
         else:
-            logging.debug('{}: login failed'.format(self.websocket.address))
+            raise ValueError
 
-    def register_email(self, accept, timeout=-1):
-        self.send({
-            'type': server_forms['REGISTER_EMAIL'],
-            'accepted': accept
-        }, timeout)
+        if enc:
+            _text = '1' + encrypt((request_type + _text).encode(), self.key, self.iv).hex()
+        else:
+            _text = '0' + request_type + _text
 
-    def register_username(self, accept, timeout=-1):
-        self.send({
-            'type': server_forms['REGISTER_USERNAME'],
-            'accepted': accept
-        }, timeout)
+        self.send_limiter.start_thread(
+            target=self.websocket.send_text,
+            args=(_text, timeout)
+        )
+        print('_text')
+        logging.debug('{}: Sent message: {}'.format(self.address(), _text))
 
-    def register_password(self, accept, timeout=-1):
-        self.send({
-            'type': server_forms['REGISTER_PASSWORD'],
-            'accepted': accept
-        }, timeout)
+    # def send_message(self, message, timeout=-1):
+    #     self.send(message.make_json(), timeout)
+    #
+    # def send_mass_message(self, messages, timeout=-1):
+    #     packed_messages = list(range(len(messages)))
+    #     for i in range(len(messages)):
+    #         packed_messages[i] = messages[i].make_json()
+    #     self.send({
+    #         'type': server_forms['MASS_MESSAGE'],
+    #         'messages': packed_messages
+    #     }, timeout)
+
+    def send_key_iv(self, msg_id, timeout=-1):
+        self.key, self.iv = generate_key_and_iv()
+        # self.send({
+        #     'type': client_requests['KEY_IV'],
+        #     'key': self.key.hex(),
+        #     'iv': self.iv.hex()
+        # }, timeout)
+        self.send(request_ids['get_key_iv'], [msg_id, self.key.hex(), self.iv.hex()], timeout)
+
+    def change_room(self, msg_id, room_name, messages, timeout=-1):
+        self.room_name = room_name
+        self.send(request_ids['enter_room'], [])
+
+
+    # def login(self, accept=True, timeout=-1):
+    #     self.send({
+    #         'type': client_requests['LOGIN'],
+    #         'accepted': accept,
+    #         'name': self.name
+    #     }, timeout)
+    #     if accept:
+    #         self.logged_in = True
+    #         logging.debug('{}: login success'.format(self.websocket.address))
+    #     else:
+    #         logging.debug('{}: login failed'.format(self.websocket.address))
+    #
+    # def register_email(self, accept, timeout=-1):
+    #     self.send({
+    #         'type': server_forms['REGISTER_EMAIL'],
+    #         'accepted': accept
+    #     }, timeout)
+    #
+    # def register_username(self, accept, timeout=-1):
+    #     self.send({
+    #         'type': server_forms['REGISTER_USERNAME'],
+    #         'accepted': accept
+    #     }, timeout)
+    #
+    # def register_password(self, accept, timeout=-1):
+    #     self.send({
+    #         'type': server_forms['REGISTER_PASSWORD'],
+    #         'accepted': accept
+    #     }, timeout)
 
     def request_responce(self, type, accept):
         self.send({
