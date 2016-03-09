@@ -14,13 +14,44 @@ import random, string
 from .email_functions import *
 import pdb
 import validators
+import re
 
 def str2hex(string):
+    try:
+        _hex = int(string,16)
+    except ValueError:
+        return False
+
     return ewebsockets.int2bytes(int(string, 16), int(len(string)/2))
 
 
 def random_str(n):
     return ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(n))
+
+def validate_username(name):
+    regex = '^[A-Z][A-Za-z0-9]*$'
+    pattern = re.compile(regex)
+    if pattern.match(name) and len(name) > 2 and len(name) < 15:
+        return True
+    else:
+        return False
+
+def validate_hexstring(string):
+    # It has to be even
+    length = len(string)
+    if length/2 != int(length/2):
+        return False
+
+    # It has to be a multiple of 16
+    if length/16 != int(length/16):
+        return False
+
+    regex = '^[A-Fa-f0-9]+$'
+    pattern = re.compile(regex)
+    if pattern.match(string):
+        return True
+    else:
+        return False
 
 
 class Chat:
@@ -43,6 +74,7 @@ class Chat:
         self.send_threads_limiter = maxthreads.MaxThreads(max_send_threads)
         self.send_timeout = send_timeout
         self.clients = {}
+        self.load_room('Chatify.com')
 
     def start(self):
         self.server.start()
@@ -77,16 +109,34 @@ class Chat:
         enc = False;
 
         if req_type == request_ids['send_message']:
-            if client.logged_in:
+            if len(message) != 1:
+                logging.error('{}: unexpected array length ({}) in send_message request'.format(
+                    client.address(), len(message)
+                ))
+                return False
+            if not client.logged_in:
                 logging.error('{}: Client tried to send a message w/o being logged in'.format(client.address()))
                 return False
+            text = message[0]
+            message_id, _time = self.db.add_message(client, message[0])
+            self.rooms[client.room_name].broadcast_message(client.name, text, _time, message_id)
             response = []
-            self.db.add_message(client, message[0])
+
         elif req_type == request_ids['get_key_iv']:
+            if len(message) != 0:
+                logging.error('{}: unexpected array length ({}) in get_key_iv request'.format(
+                    client.address(), len(message)
+                ))
+                return False
             client.send_key_iv(msg_id)
             # Returning true already because the send_key_iv automatically replies to the client
             return True
         elif req_type == request_ids['enter_room']:
+            if len(message) != 1:
+                logging.error('{}: unexpected array length ({}) in enter_room request'.format(
+                    client.address(), len(message)
+                ))
+                return False
             room_name = message[0]
             if type(room_name) != str:
                 logging.error('{}: Tried to create a room with type(room_name)={}'.format(
@@ -94,7 +144,7 @@ class Chat:
                 ))
                 return False
 
-            if not validators.url(room_name):
+            if room_name not in self.rooms and not validators.url(room_name):
                 logging.error('{}: Tried to create a room with an invalid url as room name: {}'.format(
                     client.address(), room_name
                 ))
@@ -104,12 +154,60 @@ class Chat:
             response = []
 
         elif req_type == request_ids['get_messages']:
+            if len(message) != 1:
+                logging.error('{}: unexpected array length ({}) in get_messages request'.format(
+                    client.address(), len(message)
+                ))
+                return False
             last_id = message[0]
+            if type(last_id) != int:
+                logging.error('{}: unexpected type(last_id) ({}:{}) in get_messages request'.format(
+                    client.address(), last_id, type(last_id)
+                ))
+                return False
+
             messages = self.db.get_messages(client.room_name, last_id)
-            print('MESSAGES: ', messages)
             response = [messages]
 
+        elif req_type == request_ids['check_username'] or req_type == request_ids['check_email']:
+            if len(message) != 1:
+                logging.error('{}: unexpected array length ({}) in check_username request'.format(
+                    client.address(), len(message)
+                ))
+                return False
+
+            data = message[0]
+            if type(data) != str:
+                logging.error(
+                    '{}: Username and email must be str type when checking availability, currently: {}'.format(
+                        client.address(), type(data)
+                    ))
+                return False
+
+            if req_type == request_ids['check_username']:
+                column = 'name'
+                data = data.capitalize()
+                if not validate_username(data):
+                    logging.error('{}: Tried to check an invalid username,'.format(client.address()) +
+                                  ' this is checked client side and should not be a problem here (protocol error)')
+                    return False
+            else:
+                column = 'email'
+                data = data.lower()
+                if not validators.email(data):
+                    logging.error('{}: Tried to check an invalid email,'.format(client.address()) +
+                                  ' this is checked client side and should not be a problem here (protocol error)')
+                    return False
+
+            exists = self.db.check_existence('users', column, data)
+            response = [int(not exists)]
+
         elif req_type == request_ids['register']:
+            if len(message) != 3:
+                logging.error('{}: unexpected array length ({}) in register request'.format(
+                    client.address(), len(message)
+                ))
+                return False
             email = message[0]
             name = message[1].capitalize()
             password = message[2]
@@ -121,7 +219,7 @@ class Chat:
                 return False
 
             if not validators.email(email):
-                logging.error('{}: Tried to register and email is not a valid email,'.format(client.address()) +
+                logging.error('{}: Tried to register an invalid email,'.format(client.address()) +
                               ' this is checked client side and should not be a problem here (protocol error)')
                 return False
 
@@ -137,6 +235,11 @@ class Chat:
                 response = [1]
 
         elif req_type == request_ids['login']:
+            if len(message) != 2:
+                logging.error('{}: unexpected array length ({}) in login request'.format(
+                    client.address(), len(message)
+                ))
+                return False
             email = message[0]
             password = message[1]
             if type(email) != str or type(password) != str:
@@ -144,9 +247,9 @@ class Chat:
                     client.address(), type(email), type(password)
                 ))
                 return False
-
             if not validators.email(email):
-                logging.error('{}: Email is not a valid email, this is checked '.format(client.address()) +
+                logging.error('{}: Email is not a valid email ({}), this is checked '.format(
+                    client.address(), email) +
                               'client side and should not be a problem here (protocol error)')
                 return False
 
@@ -155,15 +258,90 @@ class Chat:
                 # not None means accepted login
                 client.id, client.name = data
                 client.logged_in = True
+                logging.info('{} logged in'.format(client.address()))
+            else:
+                logging.info('{} login failed'.format(client.address()))
+            response = [int(client.logged_in), client.name]
 
-            response = [int(client.logged_in)]
+        elif req_type == request_ids['get_token']:
+            if len(message) != 0:
+                logging.error('{}: unexpected array length ({}) in get_token request'.format(
+                    client.address(), len(message)
+                ))
+                return False
+            if client.logged_in:
+                token = self.db.new_token(client)
+            else:
+                logging.error('{}: Tried to get token w/o being logged in'.format(client.address()))
+                return False
+            response = [token]
+
+        elif req_type == request_ids['auto_login']:
+            if len(message) != 2:
+                logging.error('{}: unexpected array length ({}) in auto_login request'.format(
+                    client.address(), len(message)
+                ))
+                return False
+            email = message[0]
+            token = message[1]
+            if type(email) != str or type(token) != str:
+                logging.error('{}: Tried to login and one or more of the email({}) and password({}) are of the wrong type'.format(
+                    client.address(), type(email), type(token)
+                ))
+                return False
+
+            if not validators.email(email):
+                logging.error('{}: Email is not a valid email ({}), this is checked '.format(
+                    client.address(), email) +
+                              'client side and should not be a problem here (protocol error)')
+                return False
+
+            data = self.db.validate_auto_login(client, email, token)
+            new_token = ''
+            if data is not None:
+                client.id, client.name, new_token = data
+                client.logged_in = True
+                logging.info('{} logged in with token: {}'.format(
+                    client.address(), token
+                ))
+                response = [int(client.logged_in), client.name, new_token]
+            else:
+                logging.info('{} auto login failed with token {}'.format(
+                    client.address(), token
+                ))
+                response = [int(client.logged_in)]
+
+        elif req_type == request_ids['logout']:
+            if len(message) > 1:
+                logging.error('{}: unexpected array length ({}) in logout request'.format(
+                    client.address(), len(message)
+                ))
+                return False
+
+            if not client.logged_in:
+                logging.error('{}: Client tried to logout w/o being logged in'.format(client.address()))
+                return False
+
+            if len(message) == 1:
+                token_to_remove = message[0]
+                if type(message[0]) != str:
+                    logging.error('{}: Client tried to logout with unexpected token type ({})'.format(
+                        client.address(), type(token_to_remove)
+                    ))
+                    return False
+                self.db.remove_token(client, token_to_remove)
+                logging.debug('{}: Client logout removed unused token ({})'.format(
+                        client.address(), token_to_remove
+                ))
+
+            client.logout()
+            logging.debug('{}: logged out'.format(client.address()))
+            response = []
+
         else:
-            logging.debug('Received message with unrecognized type: {}({})'.format(req_type, type(req_type)))
+            # logging.debug('Received message with unrecognized type: {}({})'.format(req_type, type(req_type)))
             return False
 
-
-        # response = json.JSONEncoder().encode([msg_id] + response)
-        # logging.debug('Sending message: {}'.format(enc + response))
         client.send(req_type, [msg_id] + response, enc)
         return True
 
@@ -380,30 +558,44 @@ class Chat:
 
     def handle_incoming_frame(self, client, frame):
         if frame.opcode == OpCode.TEXT:
-            logging.debug('Payload: {}'.format(frame.payload))
+            # logging.debug('Payload: {}'.format(frame.payload))
             if len(frame.payload) < 1:
                 logging.debug('Received a text frame that contained less that 1 bytes: {}'.format(frame.payload))
                 return False
             client_obj = self.clients[client.address]
-            msg = frame.payload[1:]
-            print('LENGTH: ', len(msg))
+            msg = frame.payload[1:].decode('utf-8')
             if frame.payload[0] == b'0'[0]:
                 pass
             elif frame.payload[0] == b'1'[0] and type(client_obj.key) == bytes and type(client_obj.iv) == bytes:
-                msg = decrypt(str2hex(msg), client_obj.key, client_obj.iv)
+                # Received a frame containing encrypted data
+                msg = msg
+                print('LENTGH', len(msg))
+                if not validate_hexstring(msg):
+                    logging.error('{}: Encrypted message is not a valid hex string: {}'.format(
+                        client_obj.address(), msg
+                    ))
+                    return False
+                try:
+                    msg = decrypt(str2hex(msg), client_obj.key, client_obj.iv).decode('utf-8')
+                except ValueError as e:
+                    logging.error('{}: Failed to decrypt data: {}'.format(
+                        client_obj.address(), e
+                    ))
+                    return False
+
+
             elif frame.payload[0] == b'1'[0] and (type(client_obj.key) != bytes or type(client_obj.iv) != bytes):
                 logging.debug('Received an encrypted text frame w/o the client key or iv set')
                 return False
             else:
-                print(frame.payload)
-                logging.debug('Received a text frame where the first byte (encrypted byte)'
-                              ' was not 1 or 0, payload: {}'.format(frame.payload[0]))
+                logging.error('{}: Received a text frame where the first byte (encrypted byte)'
+                              ' was not 1 or 0, payload: {}'.format(client_obj.address(), frame.payload[0]))
                 return False
 
-            return self.handle_request(client_obj, msg.decode('utf-8'))
+            return self.handle_request(client_obj, msg)
         else:
-            logging.debug('Received a frame containing unaccepted opcode: {}'.format(frame.opcode))
-            return False
+            # logging.debug('Received a frame containing unaccepted opcode: {}'.format(frame.opcode))
+            return True
 
 
     def handle_new_connection(self, client):
@@ -411,7 +603,6 @@ class Chat:
 
     def on_client_open(self, client):
         new_client = Client(
-            name='Name not set',
             websocket=client,
             send_limiter=self.send_threads_limiter
         )
@@ -426,4 +617,5 @@ class Chat:
         #     del self.rooms[client_obj.room_name]
         #     logging.debug('Removing room "{}" from memory because no users are left in it'.format(client_obj.name))
         del self.clients[client.address]
+        # print('CLOSED: ', client.address)
         # logging.debug('{}: Disconnected'.format(name))

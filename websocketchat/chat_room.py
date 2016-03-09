@@ -2,6 +2,7 @@
 
 from .forms import *
 import logging
+import json
 
 class ChatRoom:
     def __init__(self, name, room_id):
@@ -20,14 +21,21 @@ class ChatRoom:
             logging.debug('Failed to remove {} from {}'.format(client.name, self.name))
 
     def broadcast(self, data, timeout=-1):
+        logging.debug('{}: Broadcasting message: {}'.format(self.name, data))
         for client in self.clients:
             client.send(data, timeout)
 
     def broadcast_message(self, user, text, time, msg_id):
-        self.broadcast({
-            'type': server_forms['SINGLE_MESSAGE'],
-            'user': user,
-            'text': text,
-            'time': time,
-            'id': msg_id
-        })
+        # self.broadcast({
+        #     'type': server_forms['SINGLE_MESSAGE'],
+        #     'user': user,
+        #     'text': text,
+        #     'time': time,
+        #     'id': msg_id
+        # })
+        self.broadcast('0' +
+                       request_ids['single_message'] +
+                       json.JSONEncoder().encode(
+                           [msg_id, time, user, text]
+                       ))
+

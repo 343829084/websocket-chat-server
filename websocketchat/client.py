@@ -7,7 +7,7 @@ import logging
 import json
 
 class Client:
-    def __init__(self, name, websocket, send_limiter, room_name=None):
+    def __init__(self, websocket, send_limiter, room_name='Chatify', name='NaN'):
         self.name = name
         self.id = None
         self.websocket = websocket
@@ -41,8 +41,8 @@ class Client:
             target=self.websocket.send_text,
             args=(_text, timeout)
         )
-        print('_text')
-        logging.debug('{}: Sent message: {}'.format(self.address(), _text))
+        # print('_text')
+        # logging.debug('{}: Sent message: {}'.format(self.address(), _text))
 
     # def send_message(self, message, timeout=-1):
     #     self.send(message.make_json(), timeout)
@@ -55,6 +55,10 @@ class Client:
     #         'type': server_forms['MASS_MESSAGE'],
     #         'messages': packed_messages
     #     }, timeout)
+    def logout(self):
+        self.logged_in = False
+        self.name = 'NaN'
+
 
     def send_key_iv(self, msg_id, timeout=-1):
         self.key, self.iv = generate_key_and_iv()

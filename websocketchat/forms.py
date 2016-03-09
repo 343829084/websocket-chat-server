@@ -15,7 +15,9 @@ request_ids = {
     'check_email': '8',
     'register': '9',
     'validate': 'a',
-    'single_message': 'b'
+    'single_message': 'b',
+    'auto_login': 'c',
+    'logout': 'd'
 }
 
 client_requests = {
