@@ -19,12 +19,12 @@ class Client:
         self.key = None
         self.iv = None
         self.verification_code = None
-        self.register_items = None
+        self.email = None
 
     def address(self):
         return '{}({}:{})'.format(self.name, self.websocket.address[0], self.websocket.address[1])
 
-    def send(self, request_type, text, timeout=-1, enc=False):
+    def send(self, request_type, text, enc=False, timeout=-1):
         if type(text) == str:
             _text = text
         elif type(text) == dict or type(text) == list:
@@ -41,6 +41,7 @@ class Client:
             target=self.websocket.send_text,
             args=(_text, timeout)
         )
+        print('Sending: ', _text)
         # print('_text')
         # logging.debug('{}: Sent message: {}'.format(self.address(), _text))
 
@@ -59,15 +60,11 @@ class Client:
         self.logged_in = False
         self.name = 'NaN'
 
-
-    def send_key_iv(self, msg_id, timeout=-1):
+    def send_key_iv(self, timeout=-1):
         self.key, self.iv = generate_key_and_iv()
-        # self.send({
-        #     'type': client_requests['KEY_IV'],
-        #     'key': self.key.hex(),
-        #     'iv': self.iv.hex()
-        # }, timeout)
-        self.send(request_ids['get_key_iv'], [msg_id, self.key.hex(), self.iv.hex()], timeout)
+
+        # server_message = "0y['key', 'iv']"
+        self.send(server_message_ids['key_iv']['id'], [self.key.hex(), self.iv.hex()])
 
     def change_room(self, msg_id, room_name, messages, timeout=-1):
         self.room_name = room_name

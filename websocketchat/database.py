@@ -21,9 +21,10 @@ class ChatDb:
                                  'email': 'TEXT NOT NULL',
                                  'password': 'TEXT NOT NULL',
                                  'salt': 'TEXT NOT NULL',
-                                 'joined': 'INTEGER NOT NULL',
+                                 'registered': 'INTEGER NOT NULL',
                                  'last_online': 'INTEGER NOT NULL',
-                                 'tokens': 'TEXT NOT NULL'},
+                                 'tokens': 'TEXT NOT NULL',
+                                 'verification_code': 'TEXT'},
 
                        'messages': {'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
                                     'user': 'TEXT NOT NULL',
@@ -108,7 +109,6 @@ class ChatDb:
         #                                                                         entry))
         # db.close()
         data = self.execute(command, (entry, ), fetch='one')
-        print('DATA: ', data)
         if data is None:
             return False
         else:
@@ -142,31 +142,56 @@ class ChatDb:
         return self.execute('''SELECT id, time, user, text FROM messages WHERE room_name = ? AND id > ?''',
                             (room_name, last_id), fetch='all')
 
-    def validate_login(self, email, password):
-        data = self.execute(
-            '''SELECT id, name, password, salt FROM users WHERE email = ?''',
-            (email,), fetch='one'
-        )
+    def validate_login(self, email, password, request_token):
+        if request_token:
+            command = '''SELECT id, name, password, salt, verification_code, tokens FROM users WHERE email = ?'''
+        else:
+            command = '''SELECT id, name, password, salt, verification_code FROM users WHERE email = ?'''
+
+        data = self.execute(command, (email,), fetch='one')
+
         if data is None:
+            # No user with that email was found
             return
 
-        user_id, name, stored_password, salt = data
+        if request_token:
+            user_id, name, stored_password, salt, verification_code, tokens = data
+        else:
+            user_id, name, stored_password, salt, verification_code = data
+
         salted_password = hash(password + salt)
         if salted_password == stored_password:
-            return user_id, name
+            # User login accepted
+            request_email_verification = verification_code is not None
+
+            token = ''
+            if request_token:
+                tokens = json.JSONDecoder().decode(tokens)
+                token = random_str(32)
+                tokens.append(token)
+                if len(tokens) > 10:
+                    # Maximum saved tokens set to 10
+                    tokens = tokens[1:]
+
+                tokens = json.JSONEncoder().encode(tokens)
+                command = '''UPDATE users SET tokens = ? WHERE Id = ?'''
+                self.execute(command, (tokens, user_id), commit=True)
+
+            return user_id, name, request_email_verification, token
         else:
             return
 
     def validate_auto_login(self, client, email, token):
             data = self.execute(
-                '''SELECT id, name, tokens FROM users WHERE email = ?''',
+                '''SELECT id, name, tokens, verification_code FROM users WHERE email = ?''',
                 (email,), fetch='one'
             )
             if data is None:
                 return
 
-            user_id, name, tokens = data
+            user_id, name, tokens, verification_code = data
             tokens = json.JSONDecoder().decode(tokens)
+
             if token in tokens:
                 tokens.remove(token)
                 new_token = random_str(32)
@@ -175,8 +200,9 @@ class ChatDb:
                 self.execute('''UPDATE users SET tokens=? WHERE Id = ?''',
                                     (json.JSONEncoder().encode(tokens), user_id),
                              commit=True)
+                request_email_verification = verification_code is not None
 
-                return user_id, name, new_token
+                return user_id, name, new_token, request_email_verification
             else:
                 logging.debug('{}: Deleting tokens'.format(client.address()))
                 tokens = []
@@ -189,13 +215,18 @@ class ChatDb:
     def new_user(self, email, name, password):
         salt = random_str(32)
         salted_password = hash(password + salt)
-        self.insert('users', {'name': name,
-                              'email': email,
-                              'password': salted_password,
-                              'salt': salt,
-                              'joined': time(),
-                              'last_online': time(),
-                              'tokens': '[]'})
+        verification_code = random_str(7)
+        user_id = self.insert('users', {
+            'name': name,
+            'email': email,
+            'password': salted_password,
+            'salt': salt,
+            'registered': time(),
+            'verification_code': verification_code,
+            'last_online': time(),
+            'tokens': '[]'
+        })
+        return user_id, verification_code
 
     def new_token(self, client):
         tokens, = self.execute('''SELECT tokens FROM users WHERE id = ?''', (client.id,), fetch='one')
@@ -224,4 +255,14 @@ class ChatDb:
                      commit=True)
 
         return token
+
+    def get_verification_code(self, user_id):
+        command = '''SELECT verification_code FROM users WHERE id = ?'''
+        data, = self.execute(command, (user_id, ), fetch='one')
+        print('DATA', data)
+        return data
+
+    def remove_verification_code(self, user_id):
+        command = '''UPDATE users SET verification_code = NULL WHERE id = ?'''
+        self.execute(command, (user_id, ), commit=True)
 

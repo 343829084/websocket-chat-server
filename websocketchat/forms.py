@@ -1,108 +1,228 @@
 #!/bin/env python3
 
-
+import validators
+import re
 import json
-from time import time as current_time
+
+
+def is_int(input):
+    return type(input) == int
+
+
+def is_str(input):
+    return type(input) == str
+
+
+def is_list(input):
+    return type(input) == list
+
+
+def is_bool(input):
+    return is_int(input) and (input == 0 or input == 1)
+
+
+def is_email(input):
+    if not is_str(input):
+        return False
+
+    regex = r'^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$'
+    pattern = re.compile(regex)
+
+    if not pattern.match(input):
+        return False
+
+    return True
+
+    # return validators.email(input) == True
+
+
+def is_url(input):
+    if not is_str(input):
+        return False
+
+    return validators.url(input) == True
+
+
+def validate_username(input):
+    if not is_str(input):
+        return False
+
+    if len(input) < 3 or len(input) > 15:
+        return False
+
+    regex = '^[A-Za-z0-9]*$'
+    pattern = re.compile(regex)
+
+    if not pattern.match(input):
+        return False
+
+    return True
+
+
+def validate_hexstring(input):
+    if not is_str(input):
+        return False
+    # It has to be even
+    length = len(input)
+    if length/2 != int(length/2):
+        return False
+
+    # It has to be a multiple of 16
+    if length/16 != int(length/16):
+        return False
+
+    regex = '^[A-Fa-f0-9]+$'
+    pattern = re.compile(regex)
+    if pattern.match(input):
+        return True
+    else:
+        return False
 
 request_ids = {
-    'send_message': '1',
-    'get_messages': '2',
-    'login': '3',
-    'get_key_iv': '4',
-    'get_token': '5',
-    'enter_room': '6',
-    'check_username': '7',
-    'check_email': '8',
-    'register': '9',
-    'validate': 'a',
-    'single_message': 'b',
-    'auto_login': 'c',
-    'logout': 'd'
+    '1': {
+        'type': 'send_message',
+        'expected_length': 1,
+        'expected_types': [str],
+        'description': ['text'],
+        'validators': [is_str],
+        'response': []
+    },
+    '2': {
+        'type': 'get_messages',
+        'expected_length': 1,
+        'expected_types': [int],
+        'description': ['last_id'],
+        'validators': [is_int],
+        'response': ['messages']
+    },
+    '3': {
+        'type': 'login',
+        'expected_length': 3,
+        'expected_types': [str, str, int],
+        'description': ['email', 'password', 'request_token'],
+        'validators': [is_email, is_str, is_bool],
+        'response': ['accepted', 'name', 'request_email_verification', 'token']
+    },
+    '5': {
+        'type': 'get_token',
+        'expected_length': 0,
+        'expected_types': [],
+        'description': [],
+        'validators': [],
+        'response': ['new_token']
+    },
+    '6': {
+        'type': 'enter_room',
+        'expected_length': 1,
+        'expected_types': [str],
+        'description': ['room_name'],
+        'validators': [is_url],
+        'response': []
+    },
+    '7': {
+        'type': 'check_username',
+        'expected_length': 1,
+        'expected_types': [str],
+        'description': ['name'],
+        'validators': [validate_username],
+        'response': ['is_available']
+    },
+    '8': {
+        'type': 'check_email',
+        'expected_length': 1,
+        'expected_types': [str],
+        'description': ['email'],
+        'validators': [is_email],
+        'response': ['is_available']
+    },
+    '9': {
+        'type': 'register',
+        'expected_length': 3,
+        'expected_types': [str, str, str],
+        'description': ['email', 'name', 'password'],
+        'validators': [is_email, validate_username, is_str],
+        'response': ['accepted', 'email_available', 'name_available']
+    },
+    'a': {
+        'type': 'verify_email',
+        'expected_length': 1,
+        'expected_types': [str],
+        'description': ['verification_code'],
+        'validators': [is_str],
+        'response': ['accepted']
+    },
+    'b': {
+        'type': 'auto_login',
+        'expected_length': 2,
+        'expected_types': [str, str],
+        'description': ['email', 'token'],
+        'validators': [is_email, is_str],
+        'response': ['accepted', 'request_email_verification', 'name']
+    },
+    'c': {
+        'type': 'logout',
+        'expected_length': 1,
+        'expected_types': [str],
+        'description': ['token'],
+        'validators': [is_str],
+        'response': []
+    },
 }
 
-client_requests = {
-    'SINGLE_MESSAGE': 100,
-    'LEAVE_ROOM': 101,
-    'ENTER_ROOM': 102,
-    'LOGIN': 104,
-    'CHECK_EMAIL': 105,
-    'CHECK_USERNAME': 106,
-    'REGISTER': 107,
-    'KEY_IV': 109,
-    'VERIFY': 110,
-    'LOGOUT': 111,
-    'AUTO_LOGIN': 112
-}
-
-# forms that the server can spontaneously send out w/o a client request
-server_forms = {
-    'SINGLE_MESSAGE': 200,
+server_message_ids = {
+    'single_message': {
+        'id': 'z'
+    },
+    'key_iv': {
+        'id': 'y'
+    }
 }
 
 
-class Message:
-    def __init__(self, client, msg, time=current_time()):
-        self.text = msg['text']
-        self.user = client.name
-        self.room_id = client.room_id
-        self.time = time
-        self.id = id
+def validate_request(request):
+    """Handling of encryption happens prior to this function call
+     so the structure of the request looks like:
 
-    def make_json(self):
-        return {
-            'type': server_forms['SINGLE_MESSAGE'],
-            'text': self.text,
-            'user': self.user,
-            'time': self.time,
-            'id': self.id
-        }
+        //------------------------------------------------
+        //       1       |       2-end                   |
+        //------------------------------------------------
+        //   request_id  | request_array ([msg_id, ...)  |
+        //------------------------------------------------
+    """
+    if len(request) < 4:
+        return False, 'Request length < 4 (minimum e.x. "1[1]"'
 
+    request_id = request[0]
+    if request_id not in request_ids:
+        return False, 'Invalid request id'
 
+    req = request_ids[request_id]
+    # Trying to decode rest of the request as a list
+    try:
+        request_array = json.JSONDecoder().decode(request[1:])
+    except json.JSONDecodeError:
+        return False, 'Failed to convert request_array to list in request {}'.format(req['type'])
 
-# TYPE_SINGLE_MESSAGE = 0
-# TYPE_MASS_MESSAGE = 1
-# TYPE_CLIENTS_IN_ROOM = 2
-# TYPE_CLIENT_LEAVING_ROOM = 3
-# TYPE_CLIENT_ENTERING_ROOM = 4
-# TYPE_CLIENT_REGISTER_1 = 5
-# TYPE_CLIENT_REGISTER_2 = 6
-# TYPE_KEY_IV = 7
-# TYPE_LOGIN = 8
-# TYPE_LOGIN_RESPONCE = 9
-#
-# CONTENT_SINGLE_MESSAGE = ['type', 'user', 'id', 'room_id', 'time', 'text']
-# CONTENT_MASS_MESSAGE = ['type', 'messages']
-# CONTENT_CLIENTS_IN_ROOM = ['type', 'users', 'room_id']
-# CONTENT_CLIENT_LEAVING_ROOM = ['type', 'user']
-# CONTENT_CLIENT_ENTERING_ROOM = ['type', 'user']
-# CONTENT_KEY_IV = ['type', 'key', 'iv']
-# CONTENT_REGISTER_NAME = ['type', 'name']
-# CONTENT_REGISTER_PASS = ['type', 'password']
-# CONTENT_LOGIN = ['type', 'email', 'hash']
-# CONTENT_LOGIN_RESPONCE = ['type', 'accepted']
-#
-# CONTENT = {TYPE_SINGLE_MESSAGE: CONTENT_SINGLE_MESSAGE,
-#            TYPE_MASS_MESSAGE: CONTENT_MASS_MESSAGE,
-#            TYPE_CLIENT_LEAVING_ROOM: CONTENT_CLIENT_LEAVING_ROOM,
-#            TYPE_CLIENT_ENTERING_ROOM: CONTENT_CLIENT_ENTERING_ROOM,
-#            TYPE_CLIENTS_IN_ROOM: CONTENT_CLIENTS_IN_ROOM,
-#            TYPE_KEY_IV: CONTENT_KEY_IV,
-#            TYPE_LOGIN: CONTENT_LOGIN,
-#            TYPE_LOGIN_RESPONCE: CONTENT_LOGIN_RESPONCE}
-#
-#
-# def data_frame(**kwargs):
-#     type = kwargs['type']
-#     content = CONTENT[type]
-#     if len(kwargs) != len(content):
-#         raise ValueError('Some content missing or not supposed to be there')
-#     for kwarg in kwargs:
-#         if kwarg not in content:
-#             raise ValueError('unexpected content {}'.format(kwarg))
-#
-#     # return Frame(
-#     #     payload=json.JSONEncoder().encode(kwargs).encode(),
-#     #     mask=0,
-#     #     opcode=OpCode.TEXT
-#     # )
-#     return json.JSONEncoder().encode(kwargs)
+    if not is_list(request_array):
+        return False, 'request_array is not of type<list> after conversion in request {}'.format(req['type'])
+
+    length = len(request_array)
+    if length == 0:
+        return False, 'request_array is missing an msg_id in request {}'.format(req['type'])
+
+    msg_id = request_array[0]
+    if not is_int(msg_id):
+        return False, 'msg_id is of wrong type or missing in request {}'.format(req['type'])
+
+    if length-1 != req['expected_length']:
+        return False, 'Unexpected length in request {}'.format(req['type'])
+
+    for i in range(length-1):
+        # [i+1] because msg_id is missing in the request_ids['validators'] list
+        if not req['validators'][i](request_array[i+1]):
+            return False, 'Failed when validating {} ({}) of request {}'.format(
+                req['description'][i], request_array[i+1], req['type']
+            )
+
+    return True, [request_id, request_array]
+

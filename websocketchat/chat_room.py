@@ -11,21 +11,23 @@ class ChatRoom:
         self.clients = []
 
     def add_client(self, client):
+        client.room_name = self.name
         self.clients.append(client)
+        logging.debug('{}: {} entered room'.format(self.name, client.name))
 
     def remove_client(self, client):
         try:
-            self.clients.remove(client)
-            logging.debug('Removed {} from {}'.format(client.name, self.name))
+            # self.clients.remove(client)
+            logging.debug('{}: {} exited room'.format(self.name, client.name))
         except ValueError:
             logging.debug('Failed to remove {} from {}'.format(client.name, self.name))
 
-    def broadcast(self, data, timeout=-1):
-        logging.debug('{}: Broadcasting message: {}'.format(self.name, data))
+    def broadcast(self, type_id, message_array, encrypt=False):
+        logging.debug('{}: Broadcasting message: {}'.format(self.name, message_array))
         for client in self.clients:
-            client.send(data, timeout)
+            client.send(type_id, message_array, encrypt)
 
-    def broadcast_message(self, user, text, time, msg_id):
+    def broadcast_message(self, msg_id, time, user, text):
         # self.broadcast({
         #     'type': server_forms['SINGLE_MESSAGE'],
         #     'user': user,
@@ -33,9 +35,7 @@ class ChatRoom:
         #     'time': time,
         #     'id': msg_id
         # })
-        self.broadcast('0' +
-                       request_ids['single_message'] +
-                       json.JSONEncoder().encode(
-                           [msg_id, time, user, text]
-                       ))
+        self.broadcast(
+            type_id=server_message_ids['single_message']['id'],
+            message_array=[msg_id, time, user, text])
 
