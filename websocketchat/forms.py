@@ -37,6 +37,7 @@ def is_email(input):
 
 
 def is_url(input):
+    input = 'http://' + input
     if not is_str(input):
         return False
 

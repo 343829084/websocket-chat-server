@@ -60,7 +60,7 @@ class Chat:
         self.send_threads_limiter = maxthreads.MaxThreads(max_send_threads)
         self.send_timeout = send_timeout
         self.clients = {}
-
+        self.latency = 2  # Simulated latency on all requests and connects REMOVE THIS
         self.request_handlers = {}
 
         # Loading request handlers dict with the handler functions
@@ -769,7 +769,7 @@ class Chat:
         logging.debug('Room "{}" loaded'.format(name))
 
     def handle_incoming_frame(self, client, frame):
-        sleep(0.5)
+        sleep(self.latency)
         if frame.opcode == OpCode.TEXT:
             client_obj = self.clients[client.address]
             # logging.debug('Payload: {}'.format(frame.payload))
@@ -825,6 +825,7 @@ class Chat:
         return True
 
     def on_client_open(self, client):
+        sleep(self.latency)
         new_client = Client(
             websocket=client,
             send_limiter=self.send_threads_limiter
@@ -834,7 +835,7 @@ class Chat:
         new_client.send_key_iv()
 
     def on_client_close(self, client):
-
+        sleep(self.latency)
         client_obj = self.clients[client.address]
         if client_obj.room_name is not None:
             self.rooms[client_obj.room_name].remove_client(client_obj)
