@@ -7,7 +7,7 @@ import logging
 import json
 
 class Client:
-    def __init__(self, websocket, send_limiter, room_name='Chatify', name='NaN'):
+    def __init__(self, websocket, send_limiter, room_name=None, name='NaN'):
         self.name = name
         self.id = None
         self.websocket = websocket
@@ -59,6 +59,9 @@ class Client:
     def logout(self):
         self.logged_in = False
         self.name = 'NaN'
+        self.email = None
+        self.verification_code = None
+        self.id = None
 
     def send_key_iv(self, timeout=-1):
         self.key, self.iv = generate_key_and_iv()
@@ -101,11 +104,11 @@ class Client:
     #         'accepted': accept
     #     }, timeout)
 
-    def request_responce(self, type, accept):
-        self.send({
-            'type': type,
-            'accept': accept
-        })
+    # def request_responce(self, type, accept):
+    #     self.send({
+    #         'type': type,
+    #         'accept': accept
+    #     })
 
     # def handle_request(self, msg):
     #     if msg['type'] == client_requests['SINGLE_MESSAGE']:

@@ -2,7 +2,7 @@
 
 import ewebsockets
 from ewebsockets import Frame, OpCode
-from time import time
+from time import time, sleep
 import maxthreads
 from .forms import *
 import logging
@@ -60,9 +60,6 @@ class Chat:
         self.send_threads_limiter = maxthreads.MaxThreads(max_send_threads)
         self.send_timeout = send_timeout
         self.clients = {}
-        self.default_room = 'http://chatify.com'
-        logging.info('Opening default room: ' + self.default_room)
-        self.load_room(self.default_room)
 
         self.request_handlers = {}
 
@@ -96,10 +93,18 @@ class Chat:
 
         return True
 
-    def handle_request_enter_room(self, client, room_name):
-        client.room_name = room_name
+    def handle_request_enter_room(self, client, room_name, last_id):
+        room_name = room_name.lower()
         self.load_room(room_name)
-        return [], 0
+        messages = self.db.get_messages(room_name, last_id, latest=100)
+
+        if client.room_name is not None:
+            self.rooms[client.room_name].remove_client(client)
+
+        client.room_name = room_name
+        self.rooms[room_name].add_client(client)
+
+        return [messages], 0
 
     def handle_request_get_token(self, client):
         if client.logged_in:
@@ -114,6 +119,10 @@ class Chat:
             logging.error('{}: Client tried to send a message w/o being logged in'.format(client.address()))
             return
 
+        if client.room_name is None:
+            logging.error('{}: Client tried to send a message w/o first entering a room'.format(client.address()))
+            return
+
         if client.room_name not in self.rooms:
             logging.error('{}: Client tried to send a message to a non-existent room: {} '.format(
                 client.address(), client.room_name
@@ -125,14 +134,17 @@ class Chat:
         return [], 0
 
     def handle_request_check_username(self, client, name):
+        name = name.capitalize()
         available = not self.db.check_existence('users', 'name', name.capitalize())
         return [int(available)], 0
 
     def handle_request_check_email(self, client, email):
+        email = email.lower()
         available = not self.db.check_existence('users', 'email', email.lower())
         return [int(available)], 0
 
     def handle_request_login(self, client, email, password, request_token):
+        email = email.lower()
         data = self.db.validate_login(email, password, request_token)
         request_email_verification = 0
         token = ''
@@ -140,6 +152,7 @@ class Chat:
             accepted = 1
             # not None means accepted login
             client.id, client.name, request_email_verification, token = data
+            client.email = email
             if not request_email_verification:
                 client.logged_in = True
                 logging.info('{} logged in'.format(client.address()))
@@ -151,10 +164,6 @@ class Chat:
             logging.info('{} login failed'.format(client.address()))
         print('TOKEN: ', token, type(token), len(token), int(token != ''))
         return [accepted, int(request_email_verification), client.name, token], int(token != '')
-
-    def handle_request_get_messages(self, client, last_id):
-        messages = self.db.get_messages(client.room_name, last_id)
-        return [messages], 0
 
     def handle_request_logout(self, client, token):
         if not client.logged_in:
@@ -177,6 +186,7 @@ class Chat:
         if data is not None:
             accepted = 1
             client.id, client.name, new_token, request_email_verification = data
+            client.email = email
             if not request_email_verification:
                 client.logged_in = True
                 logging.info('{} logged in with token: {}'.format(
@@ -197,25 +207,29 @@ class Chat:
         return [accepted, int(request_email_verification), client.name, new_token], int(new_token != '')
 
     def handle_request_register(self, client, email, name, password):
-            name_available = not self.db.check_existence('users', 'name', name)
-            email_available = not self.db.check_existence('users', 'email', email)
+        email = email.lower()
+        name = name.capitalize()
+        name_available = not self.db.check_existence('users', 'name', name)
+        email_available = not self.db.check_existence('users', 'email', email)
 
-            if not name_available or not email_available:
-                accepted = 0
-                logging.debug('{}: Tried to register but name({}) or email({}) unavailable'.format(
-                    client.address(), not name_available, not email_available
-                ))
-            else:
-                accepted = 1
-                client.id, client.verification_code = self.db.new_user(email, name, password)
-                client.name = name
-                send_email(email, 'Chatify verification code', client.verification_code)
+        if not name_available or not email_available:
+            accepted = 0
+            logging.debug('{}: Tried to register but name({}) or email({}) unavailable'.format(
+                client.address(), not name_available, not email_available
+            ))
+        else:
+            accepted = 1
+            client.id, client.verification_code = self.db.new_user(email, name, password)
+            client.name = name
+            client.email = email
 
-            return [accepted, int(email_available), int(name_available)], 0
+            send_email(email, 'Chatify verification code', client.verification_code)
+
+        return [accepted, int(email_available), int(name_available)], 0
 
     def handle_request_verify_email(self, client, verification_code):
-        if client.id is None:
-            logging.error('{}: Tried to verify email w/o user_id set'.format(client.address()))
+        if client.email is None:
+            logging.error('{}: Tried to verify email w/o email set'.format(client.address()))
             return
 
         if client.verification_code is None:
@@ -239,8 +253,19 @@ class Chat:
 
         return [accepted], 0
 
+    def handle_request_new_verification_code(self, client):
+        if client.email is None:
+            logging.error('{}: Tried to get new verification code w/o email set'.format(client.address()))
+            return
 
+        new_verification_code = self.db.get_new_verification_code(client.id)
+        if new_verification_code is None:
+            logging.error('{}: Tried to get new verification code but email is already verified'.format(client.address()))
+            return
 
+        client.verification_code = new_verification_code
+        send_email(client.email, 'Chatify verification code', client.verification_code)
+        return [new_verification_code], 0
 
 
 
@@ -744,6 +769,7 @@ class Chat:
         logging.debug('Room "{}" loaded'.format(name))
 
     def handle_incoming_frame(self, client, frame):
+        sleep(0.5)
         if frame.opcode == OpCode.TEXT:
             client_obj = self.clients[client.address]
             # logging.debug('Payload: {}'.format(frame.payload))
@@ -803,18 +829,19 @@ class Chat:
             websocket=client,
             send_limiter=self.send_threads_limiter
         )
+
         self.clients[client.address] = new_client
-        self.rooms['http://chatify.com'].add_client(new_client)
         new_client.send_key_iv()
 
     def on_client_close(self, client):
 
-        # client_obj = self.clients[client.address]
-        # name = client_obj.name
-        # self.rooms[client_obj.room_name].remove_client(client_obj)
-        # if len(self.rooms[client_obj.room_name].clients) == 0:
-        #     del self.rooms[client_obj.room_name]
-        #     logging.debug('Removing room "{}" from memory because no users are left in it'.format(client_obj.name))
+        client_obj = self.clients[client.address]
+        if client_obj.room_name is not None:
+            self.rooms[client_obj.room_name].remove_client(client_obj)
+            if len(self.rooms[client_obj.room_name].clients) == 0:
+                del self.rooms[client_obj.room_name]
+                logging.debug('Removing room "{}" from memory because no users are left in it'.format(client_obj.name))
+
         del self.clients[client.address]
         # print('CLOSED: ', client.address)
-        # logging.debug('{}: Disconnected'.format(name))
+        logging.debug('{}: Disconnected'.format(client_obj.address()))

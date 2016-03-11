@@ -138,9 +138,14 @@ class ChatDb:
 
         return id, t
 
-    def get_messages(self, room_name, last_id):
-        return self.execute('''SELECT id, time, user, text FROM messages WHERE room_name = ? AND id > ?''',
+    def get_messages(self, room_name, last_id, latest):
+        messages = self.execute('''SELECT id, time, user, text FROM messages WHERE room_name = ? AND id > ?''',
                             (room_name, last_id), fetch='all')
+        length = len(messages)
+        if length > latest:
+            messages = messages[length-latest:]
+
+        return messages
 
     def validate_login(self, email, password, request_token):
         if request_token:
@@ -258,11 +263,39 @@ class ChatDb:
 
     def get_verification_code(self, user_id):
         command = '''SELECT verification_code FROM users WHERE id = ?'''
-        data, = self.execute(command, (user_id, ), fetch='one')
-        print('DATA', data)
-        return data
+        verification_code, = self.execute(command, (user_id, ), fetch='one')
+        return verification_code
 
     def remove_verification_code(self, user_id):
         command = '''UPDATE users SET verification_code = NULL WHERE id = ?'''
         self.execute(command, (user_id, ), commit=True)
+
+    def get_new_verification_code(self, user_id):
+        verification_code = self.get_verification_code(user_id)
+        if verification_code is None:
+            return
+
+        new_verification_code = random_str(7)
+        command = '''UPDATE users SET verification_code = ? WHERE id = ?'''
+
+        self.execute(command, (new_verification_code, user_id))
+
+        return new_verification_code
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

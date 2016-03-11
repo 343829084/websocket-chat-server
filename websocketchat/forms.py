@@ -87,14 +87,14 @@ request_ids = {
         'validators': [is_str],
         'response': []
     },
-    '2': {
-        'type': 'get_messages',
-        'expected_length': 1,
-        'expected_types': [int],
-        'description': ['last_id'],
-        'validators': [is_int],
-        'response': ['messages']
-    },
+    # '2': { # Messages are now automatically sent on enter_room request
+    #     'type': 'get_messages',
+    #     'expected_length': 1,
+    #     'expected_types': [int],
+    #     'description': ['last_id'],
+    #     'validators': [is_int],
+    #     'response': ['messages']
+    # },
     '3': {
         'type': 'login',
         'expected_length': 3,
@@ -103,21 +103,13 @@ request_ids = {
         'validators': [is_email, is_str, is_bool],
         'response': ['accepted', 'name', 'request_email_verification', 'token']
     },
-    '5': {
-        'type': 'get_token',
-        'expected_length': 0,
-        'expected_types': [],
-        'description': [],
-        'validators': [],
-        'response': ['new_token']
-    },
     '6': {
         'type': 'enter_room',
-        'expected_length': 1,
-        'expected_types': [str],
-        'description': ['room_name'],
-        'validators': [is_url],
-        'response': []
+        'expected_length': 2,
+        'expected_types': [str, int],
+        'description': ['room_name', 'last_id'],
+        'validators': [is_url, is_int],
+        'response': ['messages']
     },
     '7': {
         'type': 'check_username',
@@ -167,6 +159,14 @@ request_ids = {
         'validators': [is_str],
         'response': []
     },
+    'd': {
+        'type': 'new_verification_code',
+        'expected_length': 0,
+        'expected_types': [],
+        'description': [],
+        'validators': [],
+        'response': []
+    }
 }
 
 server_message_ids = {
