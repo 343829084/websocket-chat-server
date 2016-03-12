@@ -145,7 +145,7 @@ request_ids = {
         'response': ['accepted']
     },
     'b': {
-        'type': 'auto_login',
+        'type': 'token_login',
         'expected_length': 2,
         'expected_types': [str, str],
         'description': ['email', 'token'],

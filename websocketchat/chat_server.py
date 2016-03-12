@@ -50,7 +50,7 @@ class Chat:
             handle_websocket_frame=self.handle_incoming_frame,
             on_client_open=self.on_client_open,
             on_client_close=self.on_client_close,
-            esockets_kwargs= {
+            esockets_kwargs={
                 'port': 25565,
                 # 'host': '192.168.1.3'
             }
@@ -60,7 +60,7 @@ class Chat:
         self.send_threads_limiter = maxthreads.MaxThreads(max_send_threads)
         self.send_timeout = send_timeout
         self.clients = {}
-        self.latency = 2  # Simulated latency on all requests and connects REMOVE THIS
+        self.latency = 0  # Simulated latency on all requests and connects REMOVE THIS
         self.request_handlers = {}
 
         # Loading request handlers dict with the handler functions
@@ -180,7 +180,7 @@ class Chat:
         logging.debug('{}: logged out'.format(client.address()))
         return [], 0
 
-    def handle_request_auto_login(self, client, email, token):
+    def handle_request_token_login(self, client, email, token):
         data = self.db.validate_auto_login(client, email, token)
         new_token = ''
         if data is not None:
@@ -846,3 +846,6 @@ class Chat:
         del self.clients[client.address]
         # print('CLOSED: ', client.address)
         logging.debug('{}: Disconnected'.format(client_obj.address()))
+
+    def close_connection(self, client):
+        self.server.close_connection(client)
