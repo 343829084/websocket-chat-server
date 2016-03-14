@@ -17,6 +17,7 @@ class ChatRoom:
 
     def remove_client(self, client):
         try:
+            client.room_name = None
             self.clients.remove(client)
             logging.debug('{}: {} exited room'.format(self.name, client.name))
         except ValueError:

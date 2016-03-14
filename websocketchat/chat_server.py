@@ -839,10 +839,11 @@ class Chat:
         sleep(self.latency)
         client_obj = self.clients[client.address]
         if client_obj.room_name is not None:
+            room_name = client_obj.room_name #because client_obj.room_name is changed in the next call
             self.rooms[client_obj.room_name].remove_client(client_obj)
-            if len(self.rooms[client_obj.room_name].clients) == 0:
-                del self.rooms[client_obj.room_name]
-                logging.debug('Removing room "{}" from memory because no users are left in it'.format(client_obj.name))
+            if len(self.rooms[room_name].clients) == 0:
+                del self.rooms[room_name]
+                logging.debug('Removing room "{}" from memory because no users are left in it'.format(room_name))
 
         del self.clients[client.address]
         # print('CLOSED: ', client.address)
