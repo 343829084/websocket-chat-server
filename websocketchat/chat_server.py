@@ -95,7 +95,8 @@ class Chat:
 
     def handle_request_enter_room(self, client, room_name, last_id):
         room_name = room_name.lower()
-        self.load_room(room_name)
+        if room_name not in self.rooms:
+            self.load_room(room_name)
         messages = self.db.get_messages(room_name, last_id, latest=100)
 
         if client.room_name is not None:
@@ -265,7 +266,7 @@ class Chat:
 
         client.verification_code = new_verification_code
         send_email(client.email, 'Chatify verification code', client.verification_code)
-        return [new_verification_code], 0
+        return [], 0
 
 
 
@@ -847,5 +848,5 @@ class Chat:
         # print('CLOSED: ', client.address)
         logging.debug('{}: Disconnected'.format(client_obj.address()))
 
-    def close_connection(self, client):
-        self.server.close_connection(client)
+    def close_connection(self, client, status_code=ewebsockets.StatusCode.PROTOCOL_ERROR, reason=''):
+        self.server.close_connection(client.websocket, status_code=status_code, reason=reason)

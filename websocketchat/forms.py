@@ -51,7 +51,7 @@ def validate_username(input):
     if len(input) < 3 or len(input) > 15:
         return False
 
-    regex = '^[A-Za-z0-9]*$'
+    regex = '^[A-Za-z][A-Za-z0-9]*$'
     pattern = re.compile(regex)
 
     if not pattern.match(input):
