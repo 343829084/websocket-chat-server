@@ -89,8 +89,7 @@ class Chat:
 
         response_array = [msg_id] + response_array
 
-        client.send(request_id, response_array, enc)
-
+        # client.send(request_id, response_array, enc)
         return True
 
     def handle_request_enter_room(self, client, room_name, last_id):
@@ -177,8 +176,8 @@ class Chat:
                     client.address(), token
             ))
 
-        client.logout()
         logging.debug('{}: logged out'.format(client.address()))
+        client.logout()
         return [], 0
 
     def handle_request_token_login(self, client, email, token):
@@ -851,3 +850,21 @@ class Chat:
 
     def close_connection(self, client, status_code=ewebsockets.StatusCode.PROTOCOL_ERROR, reason=''):
         self.server.close_connection(client.websocket, status_code=status_code, reason=reason)
+
+    # def send(self, client, request_type, text, enc=False, timeout=5):
+    #     self.send_threads_limiter.start_thread(
+    #         target=client.send,
+    #         args=(request_type, text, enc, timeout)
+    #     )
+    #
+    # def _send(self, client, request_type, text, enc=False, timeout=5):
+    #     try:
+    #         sent = client.send(request_type, text, enc, timeout)
+    #     except BrokenPipeError:
+    #         logging.error('{}: Broken pipe error'.format(client.address()))
+    #         self.close_connection(client, ewebsockets.StatusCode.ENDP_GOING_AWAY, 'Broken pipe')
+    #     else:
+    #         if sent == 0:
+    #             self.close_connection(client, ewebsockets.StatusCode.ENDP_GOING_AWAY, 'Broken pipe') time
+    #
+    #

@@ -37,10 +37,11 @@ class Client:
         else:
             _text = '0' + request_type + _text
 
-        self.send_limiter.start_thread(
-            target=self.websocket.send_text,
-            args=(_text, timeout)
-        )
+        # self.send_limiter.start_thread(
+        #     target=self.websocket.send_text,
+        #     args=(_text, timeout)
+        # )
+        return self.websocket.send_text(_text, timeout)
         print('Sending: ', _text)
         # print('_text')
         # logging.debug('{}: Sent message: {}'.format(self.address(), _text))
