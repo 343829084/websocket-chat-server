@@ -850,6 +850,7 @@ class Chat:
 
     def on_client_closed(self, client):
         sleep(self.latency)
+        print(self.clients)
         client_obj = self.clients[client.address()]
         if client_obj.room_name is not None:
             room_name = client_obj.room_name #because client_obj.room_name is changed in the next call
