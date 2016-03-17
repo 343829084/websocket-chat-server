@@ -195,7 +195,7 @@ def validate_request(request):
 
     request_id = request[0]
     if request_id not in request_ids:
-        return False, 'Invalid request id'
+        return False, 'Invalid request id ({})'.format(request_id)
 
     req = request_ids[request_id]
     # Trying to decode rest of the request as a list

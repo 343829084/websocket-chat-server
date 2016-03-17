@@ -22,7 +22,7 @@ class Client:
         self.email = None
 
     def address(self):
-        return '{}({}:{})'.format(self.name, self.websocket.address[0], self.websocket.address[1])
+        return '{}({}:{})'.format(self.name, self.websocket.address()[0], self.websocket.address()[1])
 
     def send(self, request_type, text, enc=False, timeout=-1):
         if type(text) == str:

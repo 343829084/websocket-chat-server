@@ -47,9 +47,9 @@ class Chat:
 
         self.server = ewebsockets.Websocket(
             handle_new_connection=self.handle_new_connection,
-            handle_websocket_frame=self.handle_incoming_frame,
+            handle_frame_payload=self.handle_frame_payload,
             on_client_open=self.on_client_open,
-            on_client_close=self.on_client_close,
+            on_client_closed=self.on_client_closed,
             esockets_kwargs={
                 'port': 25565,
                 # 'host': '192.168.1.3'
@@ -89,7 +89,7 @@ class Chat:
 
         response_array = [msg_id] + response_array
 
-        # client.send(request_id, response_array, enc)
+        client.send(request_id, response_array, enc)
         return True
 
     def handle_request_enter_room(self, client, room_name, last_id):
@@ -768,29 +768,44 @@ class Chat:
         self.rooms[name] = ChatRoom(name, room_id)
         logging.debug('Room "{}" loaded'.format(name))
 
-    def handle_incoming_frame(self, client, frame):
+    def handle_frame_payload(self, client, frame):
         sleep(self.latency)
         if frame.opcode == OpCode.TEXT:
-            client_obj = self.clients[client.address]
+            client_obj = self.clients[client.address()]
             # logging.debug('Payload: {}'.format(frame.payload))
-            if len(frame.payload) < 1:
+            if frame.payload_length < 2:
                 logging.debug('{}: Received a text frame that contained less that 1 bytes: {}'.format(frame.payload))
-                return False
-            try:
-                msg = frame.payload[1:].decode('utf-8')
-            except UnicodeDecodeError as e:
-                logging.error('{}: Failed to convert payload {}'.format(client_obj.address(), e))
+                client.close(status_code=ewebsockets.StatusCode.PROTOCOL_ERROR,
+                             reason='Payload empty')
+                return
+            # try:
+            #     msg = frame.payload[1:].decode('utf-8')
+            # except UnicodeDecodeError as e:
+            #     logging.error('{}: Failed to convert payload {}'.format(client_obj.address(), e))
+            #     return False
+
+            encrypted = frame.recv_payload(1)
+            if encrypted == b'1':
+                encrypted = True
+            elif encrypted == b'0':
+                encrypted = False
+            else:
+                logging.debug('{}: Received payload with invalid first byte: {}'.format(
+                    client_obj.address(), encrypted)
+                )
                 return False
 
-            if frame.payload[0] == b'0'[0]:
-                pass
-            elif frame.payload[0] == b'1'[0] and type(client_obj.key) == bytes and type(client_obj.iv) == bytes:
+            # Receiving rest of frame (Add a maxlength here in the future)
+            msg = frame.recv_payload(frame.payload_length - frame.payload_recd).decode('utf-8')
+            print('MSG1: ', msg)
+            if encrypted and type(client_obj.key) == bytes and type(client_obj.iv) == bytes:
                 # Received a frame containing encrypted data
                 if not validate_hexstring(msg):
                     logging.error('{}: Encrypted message is not a valid hex string: {}'.format(
                         client_obj.address(), msg
                     ))
                     return False
+
                 try:
                     msg = decrypt(str2hex(msg), client_obj.key, client_obj.iv).decode('utf-8')
                 except ValueError as e:
@@ -799,15 +814,14 @@ class Chat:
                     ))
                     return False
 
-
-            elif frame.payload[0] == b'1'[0] and (type(client_obj.key) != bytes or type(client_obj.iv) != bytes):
+            elif encrypted:
                 logging.debug('Received an encrypted text frame w/o the client key or iv set')
                 return False
-            else:
-                logging.error('{}: Received a text frame where the first byte (encrypted byte)'
-                              ' was not 1 or 0'.format(client_obj.address()))
-                return False
-
+            # else:
+            #     logging.error('{}: Received a text frame where the first byte (encrypted byte)'
+            #                   ' was not 1 or 0'.format(client_obj.address()))
+            #     return False
+            print('MSG: ', msg)
             is_valid_request, validate_info = validate_request(msg)
             if not is_valid_request:
                 logging.error('{}: {}'.format(client_obj.address(), validate_info))
@@ -831,12 +845,12 @@ class Chat:
             send_limiter=self.send_threads_limiter
         )
 
-        self.clients[client.address] = new_client
+        self.clients[client.address()] = new_client
         new_client.send_key_iv()
 
-    def on_client_close(self, client):
+    def on_client_closed(self, client):
         sleep(self.latency)
-        client_obj = self.clients[client.address]
+        client_obj = self.clients[client.address()]
         if client_obj.room_name is not None:
             room_name = client_obj.room_name #because client_obj.room_name is changed in the next call
             self.rooms[client_obj.room_name].remove_client(client_obj)
@@ -844,7 +858,7 @@ class Chat:
                 del self.rooms[room_name]
                 logging.debug('Removing room "{}" from memory because no users are left in it'.format(room_name))
 
-        del self.clients[client.address]
+        del self.clients[client.address()]
         # print('CLOSED: ', client.address)
         logging.debug('{}: Disconnected'.format(client_obj.address()))
 
