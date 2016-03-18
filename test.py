@@ -18,8 +18,8 @@ root.addHandler(ch)
 # chat = websocketchat.Chat()
 # chat.start()
 port = int(sys.argv[1])
-
-server = esockets.SocketServer(port=port, client_handler=websocketchat.ChatClientHandler)
+host = '130.240.202.41'
+server = esockets.SocketServer(host=host, port=port, client_handler=websocketchat.ChatClientHandler)
 server.start()
 
 
