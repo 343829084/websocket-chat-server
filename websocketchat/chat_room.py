@@ -13,7 +13,7 @@ class ChatRoom:
     def add_client(self, client):
         client.room_name = self.name
         self.clients.append(client)
-        logging.debug('{}: {} entered room'.format(self.name, client.name))
+        logging.debug('{}: {} entered room'.format(self.name, client.name()))
 
     def remove_client(self, client):
         try:

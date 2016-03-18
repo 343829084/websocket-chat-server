@@ -79,7 +79,7 @@ def validate_hexstring(input):
     else:
         return False
 
-request_ids = {
+request_types = {
     '1': {
         'type': 'send_message',
         'expected_length': 1,
@@ -170,7 +170,7 @@ request_ids = {
     }
 }
 
-server_message_ids = {
+server_message_types = {
     'single_message': {
         'id': 'z'
     },
@@ -193,11 +193,11 @@ def validate_request(request):
     if len(request) < 4:
         return False, 'Request length < 4 (minimum e.x. "1[1]"'
 
-    request_id = request[0]
-    if request_id not in request_ids:
-        return False, 'Invalid request id ({})'.format(request_id)
+    request_type = request[0]
+    if request_type not in request_types:
+        return False, 'Invalid request id ({})'.format(request_type)
 
-    req = request_ids[request_id]
+    req = request_types[request_type]
     # Trying to decode rest of the request as a list
     try:
         request_array = json.JSONDecoder().decode(request[1:])
@@ -209,21 +209,22 @@ def validate_request(request):
 
     length = len(request_array)
     if length == 0:
-        return False, 'request_array is missing an msg_id in request {}'.format(req['type'])
+        return False, 'request_array is missing a request_id in request {}'.format(req['type'])
 
-    msg_id = request_array[0]
-    if not is_int(msg_id):
-        return False, 'msg_id is of wrong type or missing in request {}'.format(req['type'])
+    request_id = request_array[0]
+    if not is_int(request_id):
+        return False, 'request_id is of wrong type or missing in request {}'.format(req['type'])
+    request_array = request_array[1:]
 
     if length-1 != req['expected_length']:
         return False, 'Unexpected length in request {}'.format(req['type'])
 
     for i in range(length-1):
         # [i+1] because msg_id is missing in the request_ids['validators'] list
-        if not req['validators'][i](request_array[i+1]):
+        if not req['validators'][i](request_array[i]):
             return False, 'Failed when validating {} ({}) of request {}'.format(
-                req['description'][i], request_array[i+1], req['type']
+                req['description'][i], request_array[i], req['type']
             )
 
-    return True, [request_id, request_array]
+    return True, [request_type, request_id, request_array]
 

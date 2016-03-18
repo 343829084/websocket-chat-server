@@ -15,30 +15,321 @@ from .email_functions import *
 import pdb
 import validators
 import re
+import json
+
 
 def str2hex(string):
     try:
         _hex = int(string,16)
     except ValueError:
         return False
-
     return ewebsockets.int2bytes(int(string, 16), int(len(string)/2))
 
 
 def random_str(n):
     return ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(n))
 
-# def validate_request(array, request):
-#
-#     length = len(array)
-#     if length != expected_length:
-#         return False, 'Unexpected length'
-#
-#     for i in range(length):
-#         if type(array[i]) != expected_types[i]:
-#             return False, 'Unexpected type'
-#
-#     return True, ''
+rooms = {}
+db = ChatDb()
+max_payload_length = 500
+
+
+def load_room(name):
+    data = db.execute('''SELECT id, name FROM rooms where name=?''', (name,), fetch='one')
+    if data is None:
+        room_id = db.insert('rooms', {
+            'name': name,
+            'created': time()
+        })
+        logging.debug('Room "{}" created'.format(name))
+    else:
+        room_id = data[0]
+    rooms[name] = ChatRoom(name, room_id)
+    logging.debug('Room "{}" loaded'.format(name))
+
+
+class ChatClientHandler(ewebsockets.WsClientHandler):
+
+    def __init__(self):
+        super(ChatClientHandler, self).__init__()
+        self.key = None
+        self.iv = None
+        self.room_name = None
+        self._name = None
+        self.request_handlers = {}
+        for request_id in request_types:
+            self.request_handlers[request_id] = getattr(
+                self, 'handle_request_' + request_types[request_id]['type']
+            )
+
+    def send_response(self, type, array, enc=b'0'):
+        data = enc + type.encode() + json.JSONEncoder().encode(array).encode()
+        self.send_text(data)
+
+    def send_key_iv(self, timeout=-1):
+        self.key, self.iv = generate_key_and_iv()
+        self.send_response(server_message_types['key_iv']['id'],
+                           [self.key.hex(), self.iv.hex()])
+
+    def on_open(self):
+        self.send_key_iv()
+
+    def on_message(self, frame, is_binary):
+        if is_binary:
+            return b'Invalid request'
+        else:
+            if frame.payload_length < 2:
+                logging.debug('{}: Received a text frame that contained less that 1 bytes ({})'.format(
+                    self.address, frame.payload)
+                )
+                return b'Invalid request'
+            elif frame.payload_length > max_payload_length:
+                logging.debug(
+                    '{}: Received a text frame that contained more bytes that allowed (length: {})'.format(
+                        self.address, frame.payload_length
+                    ))
+                return b'Invalid request'
+
+            encrypted = frame.recv_payload(1)
+            if encrypted == b'1':
+                encrypted = True
+            elif encrypted == b'0':
+                encrypted = False
+            else:
+                logging.debug('{}: Received payload with invalid first byte: {}'.format(
+                    self.address(), encrypted)
+                )
+                return b'Invalid request'
+
+            # Receiving rest of frame (Add a maxlength here in the future)
+            msg = frame.recv_payload(frame.payload_left)
+            print('MSG: ', msg)
+            try:
+                msg = msg.decode('utf-8')
+            except UnicodeDecodeError:
+                logging.error("{}: Received a text frame whose payload couldn't be decoded to utf-8".format(
+                    self.address
+                ))
+                return b'Invalid request'
+
+            if encrypted and None not in (self.key, self.iv):
+                # Received a frame containing encrypted data
+                if not validate_hexstring(msg):
+                    logging.error('{}: Encrypted message is not a valid hex string: {}'.format(
+                        self.address, msg
+                    ))
+                    return b'Invalid request'
+
+                try:
+                    msg = decrypt(str2hex(msg), self.key, self.iv).decode('utf-8')
+                except ValueError as e:
+                    logging.error('{}: Failed to decrypt data: {}'.format(
+                        self.address, e
+                    ))
+                    return b'Invalid request'
+
+            elif encrypted:
+                logging.debug('{}: Received an encrypted text frame w/o the client key or iv set'.format(
+                    self.address
+                ))
+                return b'Invalid request'
+
+            is_valid_request, validate_info = validate_request(msg)
+            if not is_valid_request:
+                logging.error('{}: {}'.format(self.address, validate_info))
+                return b'Invalid request'
+
+            request_type, request_id, request_array = validate_info
+            return self.handle_request(request_type, request_id, request_array)
+
+    def handle_request(self, request_type, request_id, request_array):
+        response, enc = self.request_handlers[request_type](*request_array)
+
+        if response is None:
+            return b'Invalid request'
+        self.send_response(request_type, [request_id] + response, enc)
+        # self.send_text(enc + request_type + [request_id] + response)
+        return True
+
+    def handle_request_enter_room(self, room_name, last_id):
+        room_name = room_name.lower()
+        if room_name not in rooms:
+            load_room(room_name)
+        messages = db.get_messages(room_name, last_id, latest=100)
+
+        if self.room_name is not None:
+            rooms[room_name].remove_client(self)
+
+        self.room_name = room_name
+        rooms[room_name].add_client(self)
+
+        return [messages], b'0'
+
+    def handle_request_get_token(self, client):
+        if client.logged_in:
+            token = self.db.new_token(client)
+        else:
+            logging.error('{}: Tried to get token w/o being logged in'.format(client.address()))
+            return
+        return [token], 1
+
+    def handle_request_send_message(self, client, text):
+        if not client.logged_in:
+            logging.error('{}: Client tried to send a message w/o being logged in'.format(client.address()))
+            return
+
+        if client.room_name is None:
+            logging.error('{}: Client tried to send a message w/o first entering a room'.format(client.address()))
+            return
+
+        if client.room_name not in self.rooms:
+            logging.error('{}: Client tried to send a message to a non-existent room: {} '.format(
+                client.address(), client.room_name
+            ))
+            return
+
+        message_id, _time = self.db.add_message(client, text)
+        self.rooms[client.room_name].broadcast_message(message_id, _time, client.name, text)
+        return [], 0
+
+    def handle_request_check_username(self, client, name):
+        name = name.capitalize()
+        available = not self.db.check_existence('users', 'name', name.capitalize())
+        return [int(available)], 0
+
+    def handle_request_check_email(self, client, email):
+        email = email.lower()
+        available = not self.db.check_existence('users', 'email', email.lower())
+        return [int(available)], 0
+
+    def handle_request_login(self, client, email, password, request_token):
+        email = email.lower()
+        data = self.db.validate_login(email, password, request_token)
+        request_email_verification = 0
+        token = ''
+        if data is not None:
+            accepted = 1
+            # not None means accepted login
+            client.id, client.name, request_email_verification, token = data
+            client.email = email
+            if not request_email_verification:
+                client.logged_in = True
+                logging.info('{} logged in'.format(client.address()))
+            else:
+                logging.info('{} Login success, but requested email verification'.format(client.address()))
+
+        else:
+            accepted = 0
+            logging.info('{} login failed'.format(client.address()))
+        print('TOKEN: ', token, type(token), len(token), int(token != ''))
+        return [accepted, int(request_email_verification), client.name, token], int(token != '')
+
+    def handle_request_logout(self, client, token):
+        if not client.logged_in:
+            logging.error('{}: Client tried to logout w/o being logged in'.format(client.address()))
+            return
+
+        if token != '':
+            self.db.remove_token(client, token)
+            logging.debug('{}: Client logout removed unused token ({})'.format(
+                    client.address(), token
+            ))
+
+        logging.debug('{}: logged out'.format(client.address()))
+        client.logout()
+        return [], 0
+
+    def handle_request_token_login(self, client, email, token):
+        data = self.db.validate_auto_login(client, email, token)
+        new_token = ''
+        if data is not None:
+            accepted = 1
+            client.id, client.name, new_token, request_email_verification = data
+            client.email = email
+            if not request_email_verification:
+                client.logged_in = True
+                logging.info('{} logged in with token: {}'.format(
+                    client.address(), token
+                ))
+            else:
+                logging.info('{} logged in with token, but email verification requested: {}'.format(
+                    client.address(), token
+                ))
+
+        else:
+            accepted = 0
+            request_email_verification = False
+            logging.info('{} auto login failed with token {}'.format(
+                client.address(), token
+            ))
+
+        return [accepted, int(request_email_verification), client.name, new_token], int(new_token != '')
+
+    def handle_request_register(self, client, email, name, password):
+        email = email.lower()
+        name = name.capitalize()
+        name_available = not self.db.check_existence('users', 'name', name)
+        email_available = not self.db.check_existence('users', 'email', email)
+
+        if not name_available or not email_available:
+            accepted = 0
+            logging.debug('{}: Tried to register but name({}) or email({}) unavailable'.format(
+                client.address(), not name_available, not email_available
+            ))
+        else:
+            accepted = 1
+            client.id, client.verification_code = self.db.new_user(email, name, password)
+            client.name = name
+            client.email = email
+
+            send_email(email, 'Chatify verification code', client.verification_code)
+
+        return [accepted, int(email_available), int(name_available)], 0
+
+    def handle_request_verify_email(self, client, verification_code):
+        if client.email is None:
+            logging.error('{}: Tried to verify email w/o email set'.format(client.address()))
+            return
+
+        if client.verification_code is None:
+            client.verification_code = self.db.get_verification_code(client.id)
+
+        if client.verification_code is None:
+            logging.error('{}: Tried to verify an already verified email'.format(client.address()))
+            return
+
+        if verification_code == client.verification_code:
+            logging.debug('{}: Email verification success!'.format(client.address()))
+            self.db.remove_verification_code(client.id)
+            accepted = 1
+        else:
+            logging.debug('{}: Email verification failed expected {} but got {}'.format(
+                client.address(), client.verification_code, verification_code))
+            accepted = 0
+
+        if accepted:
+            client.logged_in = True
+
+        return [accepted], 0
+
+    def handle_request_new_verification_code(self, client):
+        if client.email is None:
+            logging.error('{}: Tried to get new verification code w/o email set'.format(client.address()))
+            return
+
+        new_verification_code = self.db.get_new_verification_code(client.id)
+        if new_verification_code is None:
+            logging.error('{}: Tried to get new verification code but email is already verified'.format(client.address()))
+            return
+
+        client.verification_code = new_verification_code
+        send_email(client.email, 'Chatify verification code', client.verification_code)
+        return [], 0
+
+    def name(self):
+        if self._name is None:
+            return '{}:{}'.format(*self.address)
+        return self._name
 
 class Chat:
     def __init__(self,
