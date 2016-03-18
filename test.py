@@ -17,9 +17,9 @@ root.addHandler(ch)
 
 # chat = websocketchat.Chat()
 # chat.start()
+port = int(sys.argv[1])
 
-
-server = esockets.SocketServer(port=222, client_handler=websocketchat.ChatClientHandler)
+server = esockets.SocketServer(port=port, client_handler=websocketchat.ChatClientHandler)
 server.start()
 
 
