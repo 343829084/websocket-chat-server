@@ -2,8 +2,8 @@
 import esockets
 import websocketchat
 import logging, sys
-from websocket import create_connection
-import json
+# from websocket import create_connection
+# import json
 
 root = logging.getLogger()
 root.setLevel(logging.DEBUG)
