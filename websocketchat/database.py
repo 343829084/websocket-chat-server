@@ -126,13 +126,13 @@ class ChatDb:
     #     # db.close()
     #     return data
 
-    def add_message(self, client, text, show=1):
+    def add_message(self, user, room_name, text, show=1):
         t = time()
 
         id = self.insert('messages', {
-                'user': client.name,
+                'user': user,
                 'text': text,
-                'room_name': client.room_name,
+                'room_name': room_name,
                 'show': show,
                 'time': t})
 
@@ -186,7 +186,7 @@ class ChatDb:
         else:
             return
 
-    def validate_auto_login(self, client, email, token):
+    def validate_auto_login(self, email, token):
             data = self.execute(
                 '''SELECT id, name, tokens, verification_code FROM users WHERE email = ?''',
                 (email,), fetch='one'
@@ -209,7 +209,7 @@ class ChatDb:
 
                 return user_id, name, new_token, request_email_verification
             else:
-                logging.debug('{}: Deleting tokens'.format(client.address()))
+                # logging.debug('{}: Deleting tokens'.format(client.address()))
                 tokens = []
                 self.execute('''UPDATE users SET tokens=? WHERE email = ?''',
                                     (json.JSONEncoder().encode(tokens), email),
@@ -248,15 +248,15 @@ class ChatDb:
 
         return token
 
-    def remove_token(self, client, token):
-        tokens, = self.execute('''SELECT tokens FROM users WHERE id = ?''', (client.id,), fetch='one')
+    def remove_token(self, client_id, token):
+        tokens, = self.execute('''SELECT tokens FROM users WHERE id = ?''', (client_id,), fetch='one')
         tokens = json.JSONDecoder().decode(tokens)
 
         if token in tokens:
             tokens.remove(token)
 
         self.execute('''UPDATE users SET tokens=? WHERE Id=?''',
-                     (json.JSONEncoder().encode(tokens), client.id),
+                     (json.JSONEncoder().encode(tokens), client_id),
                      commit=True)
 
         return token

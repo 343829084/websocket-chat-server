@@ -3,6 +3,10 @@
 from .forms import *
 import logging
 import json
+import maxthreads
+
+broadcast_threads = maxthreads.MaxThreads(100)
+
 
 class ChatRoom:
     def __init__(self, name, room_id):
@@ -19,14 +23,18 @@ class ChatRoom:
         try:
             client.room_name = None
             self.clients.remove(client)
-            logging.debug('{}: {} exited room'.format(self.name, client.name))
+            logging.debug('{}: {} exited room'.format(self.name, client.name()))
         except ValueError:
-            logging.debug('Failed to remove {} from {}'.format(client.name, self.name))
+            logging.debug('Failed to remove {} from {}'.format(client.name(), self.name))
 
-    def broadcast(self, type_id, message_array, encrypt=False):
+    def broadcast(self, type, message_array, encrypt=b'0'):
         logging.debug('{}: Broadcasting message: {}'.format(self.name, message_array))
         for client in self.clients:
-            client.send(type_id, message_array, encrypt)
+            broadcast_threads.start_thread(
+                target=client.send_response,
+                args=(type, message_array, encrypt)
+            )
+            # client.send(type_id, message_array, encrypt)
 
     def broadcast_message(self, msg_id, time, user, text):
         # self.broadcast({
@@ -37,6 +45,7 @@ class ChatRoom:
         #     'id': msg_id
         # })
         self.broadcast(
-            type_id=server_message_ids['single_message']['id'],
-            message_array=[msg_id, time, user, text])
+            type=server_message_types['single_message']['id'],
+            message_array=[msg_id, time, user, text]
+        )
 
